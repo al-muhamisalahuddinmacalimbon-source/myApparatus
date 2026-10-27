@@ -24,7 +24,7 @@ export default function Home() {
     );
 
     if (studentExists) {
-      router.push("/catalog");
+      router.push("/home");
       return;
     }
 
@@ -36,7 +36,7 @@ export default function Home() {
   function handleRegistrationSave(student: Student) {
     addStudent(student);
     registrationOpenRef.current = false;
-    router.push("/catalog");
+    router.push("/home");
   }
 
   function handleRegistrationCancel() {

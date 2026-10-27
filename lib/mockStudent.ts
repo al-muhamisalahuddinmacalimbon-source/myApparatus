@@ -8,7 +8,7 @@ export type Student = {
 export const mockStudents: Student[] = [
   {
     studentId: "2024-0053",
-    name: "Alex Student",
+    name: "Al-Muhami M. Macalimbon",
     course: "BS Computer Science",
     yearLevel: "2nd Year",
   },
