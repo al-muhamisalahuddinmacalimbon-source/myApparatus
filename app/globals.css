@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-maroon: #a21d21;
+  --color-charcoal: #323232;
+  --color-accent: #ffc72c;
+  --color-gold: #ffc72c;
+  --color-ink: #333333;
+  --color-surface: #fafafa;
+  --color-page: #f4f5f7;
+  --color-alert: #ed7275;
+  --color-alert-text: #5a1012;
+  --color-success: #008b4b;
+  --color-link: #3b8bba;
+  --font-sans: var(--font-open-sans);
+}
+
+body {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--color-ink) 4%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-ink) 4%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 30px 30px;
+}
