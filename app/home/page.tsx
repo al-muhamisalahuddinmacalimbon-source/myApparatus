@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import {
   CalendarDays,
   CircleAlert,
@@ -6,10 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import TopBar from "../../components/TopBar";
-import { mockStudents } from "../../lib/mockStudent";
 import { mockHomeCards } from "../../lib/mockHome";
-
-const student = mockStudents[0];
 
 const dashboardTiles = [
   {
@@ -27,12 +27,29 @@ const dashboardTiles = [
 ];
 
 export default function HomePage() {
+  const [studentName, setStudentName] = useState<string>("Student");
+
+  useEffect(() => {
+    // Read the student record saved in localStorage during login
+    const savedStudent = localStorage.getItem("student");
+    if (savedStudent) {
+      try {
+        const parsed = JSON.parse(savedStudent);
+        if (parsed.full_name) {
+          setStudentName(parsed.full_name);
+        }
+      } catch (e) {
+        console.error("Failed to parse student data", e);
+      }
+    }
+  }, []);
+
   return (
     <>
-      <TopBar studentName={student.name} />
+      <TopBar studentName={studentName} />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 sm:px-6">
         <h1 className="mb-4 text-xl font-semibold text-ink">
-          Good morning, Macalimbon
+          Good morning, {studentName}
         </h1>
 
         <div

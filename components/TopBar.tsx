@@ -8,6 +8,7 @@ type TopBarProps = {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   cartCount?: number;
+  onCartClick?: () => void;
 };
 
 export default function TopBar({
@@ -15,6 +16,7 @@ export default function TopBar({
   searchValue,
   onSearchChange,
   cartCount = 0,
+  onCartClick,
 }: TopBarProps) {
   return (
     <header className="flex h-14 items-center justify-between gap-4 bg-maroon px-4 text-surface sm:px-6">
@@ -40,6 +42,7 @@ export default function TopBar({
           <button
             aria-label={`Cart, ${cartCount} items`}
             className="flex h-9 items-center gap-2 rounded border border-ink/30 bg-surface px-3 text-sm text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            onClick={onCartClick}
             type="button"
           >
             <ShoppingCart aria-hidden="true" className="size-4" />

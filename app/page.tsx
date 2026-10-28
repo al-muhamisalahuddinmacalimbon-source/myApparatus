@@ -16,22 +16,32 @@ export default function Home() {
   const [showRegistration, setShowRegistration] = useState(false);
   const [error, setError] = useState("");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const enteredId = studentId.trim();
-    const studentExists = students.some(
-      (student) => student.studentId === enteredId,
-    );
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  const enteredId = studentId.trim();
+  if (!enteredId) return;
 
-    if (studentExists) {
+  setError("");
+
+  try {
+    // 1. Query PostgreSQL API for the entered Student ID
+    const res = await fetch(`/api/students/${enteredId}`);
+
+    if (res.ok) {
+      const studentData = await res.json();
+      
+      // 2. Save student profile to localStorage so Home & Catalog screens can use it
+      localStorage.setItem("student", JSON.stringify(studentData));
+      
+      // 3. Navigate to Student Home (S2)
       router.push("/home");
-      return;
+    } else {
+      setError("Student ID Not Found in Database");
     }
-
-    setError("Student ID Not Found");
-    registrationOpenRef.current = true;
-    setShowRegistration(true);
+  } catch (err) {
+    setError("Error connecting to server");
   }
+}
 
   function handleRegistrationSave(student: Student) {
     addStudent(student);
