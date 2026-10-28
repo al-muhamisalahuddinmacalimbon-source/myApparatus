@@ -4,12 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useRef, useState } from "react";
 import RegisterModal from "../components/RegisterModal";
-import { useStudents } from "../components/StudentProvider";
 import type { Student } from "../lib/mockStudent";
 
 export default function Home() {
   const router = useRouter();
-  const { students, addStudent } = useStudents();
   const inputRef = useRef<HTMLInputElement>(null);
   const registrationOpenRef = useRef(false);
   const [studentId, setStudentId] = useState("");
@@ -39,12 +37,36 @@ export default function Home() {
       setError("Student ID Not Found in Database");
     }
   } catch (err) {
+    console.error("Error connecting to the student API:", err);
     setError("Error connecting to server");
   }
 }
 
-  function handleRegistrationSave(student: Student) {
-    addStudent(student);
+  async function handleRegistrationSave(student: Student) {
+    const response = await fetch("/api/students", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: student.studentId,
+        full_name: student.name,
+        course: student.course,
+        year_level: Number.parseInt(student.yearLevel, 10),
+      }),
+    });
+    const data: unknown = await response.json();
+
+    if (!response.ok) {
+      const message =
+        data &&
+        typeof data === "object" &&
+        "error" in data &&
+        typeof data.error === "string"
+          ? data.error
+          : "Unable to register your account.";
+      throw new Error(message);
+    }
+
+    localStorage.setItem("student", JSON.stringify(data));
     registrationOpenRef.current = false;
     router.push("/home");
   }
@@ -111,9 +133,19 @@ export default function Home() {
               className="mt-1 h-11 rounded bg-maroon font-semibold text-surface hover:bg-charcoal focus:outline-2 focus:outline-offset-2 focus:outline-accent"
               type="submit"
             >
-              Go
+              Login
             </button>
           </form>
+          <button
+            className="mt-4 w-full text-center text-sm font-semibold text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            onClick={() => {
+              registrationOpenRef.current = true;
+              setShowRegistration(true);
+            }}
+            type="button"
+          >
+            Register for an account
+          </button>
         </section>
       </main>
 
@@ -121,7 +153,7 @@ export default function Home() {
         <RegisterModal
           onCancel={handleRegistrationCancel}
           onSave={handleRegistrationSave}
-          studentId={studentId.trim()}
+          initialStudentId={studentId.trim()}
         />
       )}
     </>

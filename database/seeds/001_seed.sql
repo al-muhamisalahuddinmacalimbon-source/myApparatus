@@ -1,6 +1,4 @@
--- myApparatus sample data (all names and IDs are made up)
--- File: database/seeds/001_seed.sql
--- Run this once, right after 001_init.sql, on a fresh database.
+
 
 INSERT INTO students (student_id, full_name, course, year_level) VALUES
   ('2023-0001', 'Juan Dela Cruz', 'BS Chemical Engineering', 3),
