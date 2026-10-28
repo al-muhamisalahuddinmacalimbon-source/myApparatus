@@ -3,11 +3,21 @@
 -- Run this once, right after 001_init.sql, on a fresh database.
 
 INSERT INTO students (student_id, full_name, course, year_level) VALUES
-  ('2023-0001', 'Juan Dela Cruz',  'BS Chemical Engineering',    3),
-  ('2023-0002', 'Maria Santos',    'BS Electronics Engineering', 2),
-  ('2023-0003', 'Ana Reyes',       'BS Mechanical Engineering',  4),
-  ('2023-0004', 'Carlo Mendoza',   'BS Materials Engineering',   1),
-  ('2023-0005', 'Liza Fernandez',  'BS Chemistry',               3);
+  ('2023-0001', 'Juan Dela Cruz', 'BS Chemical Engineering', 3),
+  ('2023-0002', 'Maria Santos', 'BS Electronics Engineering', 2),
+  ('2023-0003', 'Ana Reyes', 'BS Mechanical Engineering', 4),
+  ('2023-0004', 'Carlo Mendoza', 'BS Materials Engineering', 1),
+  ('2023-0005', 'Liza Fernandez', 'BS Chemistry', 3),
+  ('2024-0053', 'Al-Muhami M. Macalimbon', 'BS Computer Science', 2),
+  ('2023-0006', 'Lance Sacay', 'BS Computer Science', 3),
+  ('2023-0007', 'Sai Malubay', 'BS Materials Engineering', 3),
+  ('2023-0008', 'Cosain Saleh', 'BS Civil Engineering', 3),
+  ('2023-0009', 'Demos Maglasang', 'BS Electrical Engineering', 3),
+  ('2023-0010', 'Theodore Megrenio', 'BS Mechanical Engineering', 3),
+  ('2023-0011', 'Johnlord Galleto', 'BS Electronics Engineering', 3),
+  ('2023-0012', 'Duke David Andre Paquit', 'BS Chemical Engineering', 3),
+  ('2023-0013', 'John Marcuz Sembrano', 'BS Computer Engineering', 3)
+ON CONFLICT (student_id) DO NOTHING;
 
 INSERT INTO apparatus (name, category, icon, total_stock, available_stock) VALUES
   ('Beaker 250 mL',        'Glassware',   'flask-conical', 20, 20),
