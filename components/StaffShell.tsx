@@ -63,13 +63,13 @@ const navigationItems = [
     label: "Catalog",
     href: "/staff/catalog",
     Icon: Package,
-    available: false,
+    available: true,
   },
   {
     label: "Reports",
     href: "/staff/reports",
     Icon: ChartNoAxesColumnIncreasing,
-    available: false,
+    available: true,
   },
 ];
 

@@ -16,6 +16,9 @@ export async function GET(
          l.id AS loan_id,
          l.borrowed_at,
          l.due_at,
+         CEIL(
+           EXTRACT(EPOCH FROM (l.due_at - NOW())) / 86400
+         )::integer AS days_until_due,
          json_agg(
            json_build_object(
              'name', a.name,

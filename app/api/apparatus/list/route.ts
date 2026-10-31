@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import { NextResponse } from "next/server";
+import pool from "@/lib/db";
 
 export async function GET(request: Request) {
   try {
@@ -7,8 +7,9 @@ export async function GET(request: Request) {
     const category = searchParams.get('category');
     const search = searchParams.get('search');
 
-    let query = 'SELECT * FROM apparatus WHERE status = $1';
-    const queryParams: any[] = ['Active'];
+    let query =
+      "SELECT id, name, category, available_stock, total_stock, status, icon FROM apparatus WHERE status = $1";
+    const queryParams: Array<string> = ["Active"];
 
     if (category && category !== 'All') {
       queryParams.push(category);
@@ -20,11 +21,17 @@ export async function GET(request: Request) {
       query += ` AND name ILIKE $${queryParams.length}`;
     }
 
-    query += ' ORDER BY id ASC';
+    query += " ORDER BY id ASC";
 
     const result = await pool.query(query, queryParams);
-    return NextResponse.json(result.rows);
+    return NextResponse.json(result.rows, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    console.error("Unable to load apparatus catalog:", error);
+    return NextResponse.json(
+      { error: "Unable to load equipment from the database." },
+      { status: 500 },
+    );
   }
 }

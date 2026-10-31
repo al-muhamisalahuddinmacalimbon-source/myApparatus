@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
     for (const item of items) {
       const stockCheck = await client.query(
-        "SELECT available_stock, name FROM apparatus WHERE id = $1 FOR UPDATE",
+        "SELECT available_stock, name, status FROM apparatus WHERE id = $1 FOR UPDATE",
         [item.id],
       );
 
@@ -101,6 +101,15 @@ export async function POST(request: Request) {
         return NextResponse.json(
           { error: `Insufficient stock for ${stockCheck.rows[0].name}` },
           { status: 400 },
+        );
+      }
+
+      if (stockCheck.rows[0].status !== "Active") {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return NextResponse.json(
+          { error: `${stockCheck.rows[0].name} is no longer available for borrowing.` },
+          { status: 409 },
         );
       }
 

@@ -15,6 +15,7 @@ type BorrowedLoan = {
   loan_id: number;
   borrowed_at: string;
   due_at: string;
+  days_until_due: number;
   items: BorrowedItem[];
 };
 
@@ -41,6 +42,9 @@ function isBorrowedLoan(value: unknown): value is BorrowedLoan {
     typeof value.borrowed_at === "string" &&
     "due_at" in value &&
     typeof value.due_at === "string" &&
+    "days_until_due" in value &&
+    typeof value.days_until_due === "number" &&
+    Number.isInteger(value.days_until_due) &&
     "items" in value &&
     Array.isArray(value.items) &&
     value.items.length > 0 &&
@@ -64,10 +68,6 @@ function formatDueDate(date: string) {
     month: "short",
     year: "numeric",
   }).format(new Date(date));
-}
-
-function getDaysUntilDue(date: string) {
-  return Math.ceil((new Date(date).getTime() - Date.now()) / 86_400_000);
 }
 
 export default function MyBookingsPage() {
@@ -146,7 +146,7 @@ export default function MyBookingsPage() {
     const matchesSearch = borrowing.items.some((item) =>
       item.name.toLowerCase().includes(search.trim().toLowerCase()),
     );
-    const daysUntilDue = getDaysUntilDue(borrowing.due_at);
+    const daysUntilDue = borrowing.days_until_due;
     const matchesDueFilter =
       dueFilter === "all" ||
       (dueFilter === "due-soon" && daysUntilDue > 0 && daysUntilDue <= 3) ||
@@ -213,7 +213,7 @@ export default function MyBookingsPage() {
               </p>
             ) : borrowings.length > 0 && filteredBorrowings.length > 0 ? (
               filteredBorrowings.map((borrowing) => {
-                const daysUntilDue = getDaysUntilDue(borrowing.due_at);
+                const daysUntilDue = borrowing.days_until_due;
                 const daysOverdue = Math.max(1, Math.abs(daysUntilDue));
 
                 return (

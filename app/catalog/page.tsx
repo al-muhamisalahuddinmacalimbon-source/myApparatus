@@ -14,7 +14,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import TopBar from "../../components/TopBar";
 import CartDrawer, { type CartItem } from "../../components/student/CartDrawer";
 import BorrowerSlip from "../../components/student/BorrowerSlip";
@@ -43,7 +43,13 @@ const apparatusIcons = [
   Scale,
 ];
 
-const categories = ["Glassware", "Electronics", "Tools", "Machines"] as const;
+const categories = [
+  "Glassware",
+  "Electronics",
+  "Tools",
+  "Machines",
+  "Safety",
+] as const;
 
 function isApparatus(value: unknown): value is Apparatus {
   if (!value || typeof value !== "object") return false;
@@ -214,51 +220,71 @@ export default function CatalogPage() {
     return () => window.clearTimeout(timeout);
   }, [cartNotice]);
 
-  // Fetch live inventory from PostgreSQL database
-  useEffect(() => {
-    const controller = new AbortController();
+  const loadCatalog = useCallback(async (signal: AbortSignal) => {
     const params = new URLSearchParams();
     if (selectedCategory !== "All") params.append("category", selectedCategory);
     if (search.trim()) params.append("search", search.trim());
 
-    fetch(`/api/apparatus/list?${params.toString()}`, {
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const data: unknown = await response.json();
-        if (!response.ok) {
-          const message =
-            data &&
-            typeof data === "object" &&
-            "error" in data &&
-            typeof data.error === "string"
-              ? data.error
-              : "Unable to load equipment from the database.";
-          throw new Error(message);
-        }
-        if (!Array.isArray(data) || !data.every(isApparatus)) {
-          throw new Error("The equipment API returned data in an unexpected format.");
-        }
-        return data;
-      })
-      .then((data) => {
-        setApparatusList(data);
-        setCart((currentCart) => reconcileCart(currentCart, data));
-        setCatalogError("");
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error fetching catalog from database:", error);
-        setCatalogError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load equipment from the database.",
-        );
-      })
-      .finally(() => setLoading(false));
+    try {
+      const response = await fetch(`/api/apparatus/list?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const message =
+          data &&
+          typeof data === "object" &&
+          "error" in data &&
+          typeof data.error === "string"
+            ? data.error
+            : "Unable to load equipment from the database.";
+        throw new Error(message);
+      }
+      if (!Array.isArray(data) || !data.every(isApparatus)) {
+        throw new Error("The equipment API returned data in an unexpected format.");
+      }
+      setApparatusList(data);
+      setCart((currentCart) => reconcileCart(currentCart, data));
+      setCatalogError("");
+    } catch (error) {
+      if (signal.aborted) return;
+      console.error("Error fetching catalog from database:", error);
+      setCatalogError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load equipment from the database.",
+      );
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, [search, selectedCategory]);
 
-    return () => controller.abort();
-  }, [selectedCategory, search]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const initialLoad = window.setTimeout(
+      () => void loadCatalog(controller.signal),
+      0,
+    );
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void loadCatalog(controller.signal);
+      }
+    };
+    const interval = window.setInterval(() => {
+      void loadCatalog(controller.signal);
+    }, 15_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(initialLoad);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadCatalog]);
 
   useEffect(() => {
     const timeout = window.setTimeout(async () => {
@@ -534,13 +560,17 @@ export default function CatalogPage() {
                   <h2 className="font-semibold text-ink">{apparatus.name}</h2>
                   <p className="text-sm text-link">{apparatus.category}</p>
                   <div className="mb-2 mt-1 flex items-center justify-between gap-2 text-sm">
-                    <span className="text-ink">
-                      Available: {availableToAdd}
+                    <span className="text-ink">Total stock: {apparatus.total_stock}</span>
+                    <span className="rounded bg-success px-2 py-0.5 text-xs font-semibold text-surface">
+                      {apparatus.status}
                     </span>
-                    {isInStock && (
-                      <span className="rounded bg-success px-2 py-0.5 text-xs font-semibold text-surface">
-                        In stock
-                      </span>
+                  </div>
+                  <div className="mb-2 flex items-center justify-between gap-2 text-sm">
+                    <span className="text-ink">
+                      Available: {apparatus.available_stock}
+                    </span>
+                    {quantityInCart > 0 && (
+                      <span className="text-ink/70">In cart: {quantityInCart}</span>
                     )}
                   </div>
                   <button

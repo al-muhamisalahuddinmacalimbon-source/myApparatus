@@ -2,7 +2,8 @@ export type ApparatusCategory =
   | "Glassware"
   | "Electronics"
   | "Tools"
-  | "Machines";
+  | "Machines"
+  | "Safety";
 
 export type Apparatus = {
   id: string;
