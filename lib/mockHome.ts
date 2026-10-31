@@ -16,7 +16,7 @@ export const mockHomeCards: HomeCard[] = [
     title: "Lab notices",
     description: "Laboratory is under maintenance until October 28, 2026.",
     actionLabel: "Read notices",
-    href: "/home#lab-notices",
+    href: "/notices",
   },
   {
     title: "Machines free today",

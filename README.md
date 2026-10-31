@@ -25,7 +25,6 @@ A full-stack, web-based laboratory equipment borrowing system designed for the *
 - **Cart & Borrower Slip:** Dynamic cart drawer that calculates quantities and generates digital borrower slips submitted directly to PostgreSQL (`/api/borrow/submit`).
 - **Technician / Admin Dashboard:** Monitoring log tracking active loans, due dates, borrower details, and current checkouts (`/api/admin/active-loans`).
 
----
 
 ## 📂 Project Progress
 
