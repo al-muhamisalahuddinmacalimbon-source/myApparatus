@@ -20,6 +20,17 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Database migrations
+
+Set `DATABASE_URL` in `.env.local` for your PostgreSQL database, then apply the schema files in order:
+
+```powershell
+psql $env:DATABASE_URL -f database\migrations\001_init.sql
+psql $env:DATABASE_URL -f database\migrations\002_reservation_requests_and_staff_notifications.sql
+```
+
+Migration 002 adds student reservation-cancellation requests and staff notifications.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -130,6 +130,17 @@ export async function POST(request: Request) {
       );
     }
 
+    await client.query(
+      `INSERT INTO staff_notifications (event_type, student_id, message)
+       VALUES ('Borrow', $1, $2)`,
+      [
+        studentId.trim(),
+        `Borrower submitted a loan with ${borrowedItems
+          .map((item) => `${item.quantity} × ${item.name}`)
+          .join(", ")}.`,
+      ],
+    );
+
     await client.query("COMMIT");
     transactionStarted = false;
     return NextResponse.json({
