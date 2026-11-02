@@ -1,22 +1,39 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import TopBar from "../../../components/TopBar";
-import { getOrderedNotices, mockNotices } from "../../../lib/mockNotices";
+import pool from "../../../lib/db";
+import {
+  getOrderedNotices,
+  isLabNotice,
+} from "../../../lib/notices";
+
+export const dynamic = "force-dynamic";
 
 function formatNoticeDate(date: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(`${date}T00:00:00`));
+  }).format(new Date(date));
 }
 
 export default async function NoticeDetailPage({
   params,
 }: PageProps<"/notices/[id]">) {
   const { id } = await params;
-  const notices = getOrderedNotices(mockNotices);
-  const noticeIndex = notices.findIndex((notice) => notice.id === id);
+  const noticeId = Number(id);
+  if (!Number.isInteger(noticeId) || noticeId < 1) notFound();
+
+  const result = await pool.query(
+    `SELECT id, title, category, body, pinned, created_at::text AS created_at
+     FROM lab_notices
+     ORDER BY pinned DESC, created_at DESC`,
+  );
+  if (!result.rows.every(isLabNotice)) {
+    throw new Error("Lab notices were returned in an unexpected format.");
+  }
+  const notices = getOrderedNotices(result.rows);
+  const noticeIndex = notices.findIndex((notice) => notice.id === noticeId);
   if (noticeIndex < 0) notFound();
 
   const notice = notices[noticeIndex];
@@ -45,8 +62,8 @@ export default async function NoticeDetailPage({
                 {notice.category}
               </span>
             </div>
-            <time className="shrink-0 text-xs font-semibold text-ink">
-              {formatNoticeDate(notice.date)}
+            <time className="shrink-0 text-xs font-semibold text-ink" dateTime={notice.created_at}>
+              {formatNoticeDate(notice.created_at)}
             </time>
           </div>
           <h1 className="mb-2 text-xl font-semibold text-ink">{notice.title}</h1>
@@ -54,8 +71,8 @@ export default async function NoticeDetailPage({
             Posted by Lab Technician
           </p>
           <div className="space-y-4 py-4 text-sm leading-6 text-ink">
-            {notice.body.map((paragraph) => (
-              <p key={paragraph}>{paragraph}</p>
+            {notice.body.split(/\r?\n/).filter(Boolean).map((paragraph, index) => (
+              <p key={`${index}-${paragraph}`}>{paragraph}</p>
             ))}
           </div>
           <nav

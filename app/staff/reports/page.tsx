@@ -47,24 +47,15 @@ function formatBorrowedDate(value: string) {
 }
 
 export default function StaffReportsPage() {
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [rows, setRows] = useState<LiabilityReportRow[]>([]);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function generateReport() {
-    if (startDate && endDate && startDate > endDate) {
-      setError("Start date must be on or before end date.");
-      return;
-    }
-
     setLoading(true);
     setError("");
     const params = new URLSearchParams();
-    if (startDate) params.set("start", startDate);
-    if (endDate) params.set("end", endDate);
     params.set("timeZone", Intl.DateTimeFormat().resolvedOptions().timeZone);
 
     try {
@@ -145,30 +136,10 @@ export default function StaffReportsPage() {
     <StaffShell>
       <h1 className="text-xl font-semibold text-ink">Liability report</h1>
       <p className="mb-4 text-sm text-ink">
-        Overdue items with quantity not returned, borrowed date and days overdue.
+        Students with borrowed items past their due date that have not been returned.
       </p>
 
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="sr-only">Start date</span>
-          <input
-            aria-label="Start date"
-            className="min-h-10 rounded-md border border-ink/40 bg-surface px-3 py-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            onChange={(event) => setStartDate(event.target.value)}
-            type="date"
-            value={startDate}
-          />
-        </label>
-        <label className="block">
-          <span className="sr-only">End date</span>
-          <input
-            aria-label="End date"
-            className="min-h-10 rounded-md border border-ink/40 bg-surface px-3 py-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            onChange={(event) => setEndDate(event.target.value)}
-            type="date"
-            value={endDate}
-          />
-        </label>
         <button
           className="min-h-10 rounded-md bg-maroon px-4 py-2 text-sm font-semibold text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-wait disabled:opacity-60"
           disabled={loading}
@@ -215,7 +186,7 @@ export default function StaffReportsPage() {
             ) : rows.length === 0 ? (
               <tr>
                 <td className="px-3 py-6 text-center text-ink/70" colSpan={6}>
-                  No unreturned items found for the selected date range.
+                  No overdue unreturned items found.
                 </td>
               </tr>
             ) : (

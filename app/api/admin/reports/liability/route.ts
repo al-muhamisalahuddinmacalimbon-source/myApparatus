@@ -3,12 +3,6 @@ import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-function isValidDate(value: string | null): value is string {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 function isValidTimeZone(value: string | null): value is string {
   if (!value) return false;
   try {
@@ -21,18 +15,11 @@ function isValidTimeZone(value: string | null): value is string {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const start = searchParams.get("start");
-  const end = searchParams.get("end");
   const timeZone = searchParams.get("timeZone");
 
-  if (
-    (start !== null && !isValidDate(start)) ||
-    (end !== null && !isValidDate(end)) ||
-    (start && end && start > end) ||
-    !isValidTimeZone(timeZone)
-  ) {
+  if (!isValidTimeZone(timeZone)) {
     return NextResponse.json(
-      { error: "Enter a valid borrowed-date range and device timezone." },
+      { error: "Enter a valid device timezone." },
       { status: 400 },
     );
   }
@@ -44,7 +31,7 @@ export async function GET(request: Request) {
          s.full_name AS student_name,
          a.name AS item_name,
          (li.quantity - li.returned_quantity)::integer AS quantity,
-         to_char(timezone($3, l.borrowed_at)::date, 'YYYY-MM-DD') AS borrowed_date,
+         to_char(timezone($1, l.borrowed_at)::date, 'YYYY-MM-DD') AS borrowed_date,
          CASE
            WHEN l.due_at <= NOW() THEN GREATEST(
              1,
@@ -63,16 +50,8 @@ export async function GET(request: Request) {
        WHERE l.status = 'Active'
          AND li.quantity > li.returned_quantity
          AND l.due_at <= NOW()
-         AND (
-           $1::date IS NULL OR
-           timezone($3, l.borrowed_at)::date >= $1::date
-         )
-         AND (
-           $2::date IS NULL OR
-           timezone($3, l.borrowed_at)::date <= $2::date
-         )
        ORDER BY s.full_name, l.borrowed_at, a.name`,
-      [start, end, timeZone],
+      [timeZone],
     );
 
     return NextResponse.json(result.rows, {

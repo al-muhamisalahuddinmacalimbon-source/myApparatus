@@ -15,11 +15,23 @@ The backend lives inside the Next.js app as route handlers under `app/api/`. Upd
 | `/api/returns/[loanId]/partial` | POST | Confirm return of selected items | US-17 | 2 | Planned |
 | `/api/loans/by-student/[id]` | GET | Active loans of a scanned student ID | US-16 | 2 | Planned |
 | `/api/admin/apparatus` | POST, PUT | Add, edit or archive apparatus | US-08 | 3 | Planned |
+| `/api/notices` | GET | List published lab notices for students and staff | Notices | — | Available |
+| `/api/admin/notices` | POST, PUT, DELETE | Publish, edit, pin or delete student-facing lab notices | Notices | — | Available |
 | `/api/machines` | GET | List shared machines | US-04 | 3 | Planned |
 | `/api/reservations` | GET, POST | Calendar slots and booking (with a transaction lock) | US-04, US-05 | 3 | Planned |
 | `/api/reservations/[id]` | DELETE | Cancel a reservation | US-14 | 3 | Planned |
 | `/api/reservations/by-student/[id]` | GET | My Bookings | US-15 | 3 | Planned |
 | `/api/admin/report/liability` | GET | Unreturned items as a CSV download | US-10 | 4 | Planned |
+
+## Lab notices
+
+Apply `database/migrations/003_lab_notices.sql` to add persistent notices before using the notice board:
+
+```bash
+psql -U postgres -d myapparatus -f database/migrations/003_lab_notices.sql
+```
+
+Staff can publish, edit, pin, and delete notices from `/staff/notices`. Published notices are listed at `/notices` and can be opened individually.
 
 ## Error format
 

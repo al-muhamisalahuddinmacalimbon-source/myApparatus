@@ -10,7 +10,7 @@ import {
 import Link from "next/link";
 import TopBar from "../../components/TopBar";
 import { mockHomeCards } from "../../lib/mockHome";
-import { mockNotices } from "../../lib/mockNotices";
+import { isLabNotice } from "../../lib/notices";
 
 type DashboardItem = {
   name: string;
@@ -138,6 +138,8 @@ export default function HomePage() {
   const [studentName, setStudentName] = useState<string>("Student");
   const [activity, setActivity] = useState<DashboardActivity | null>(null);
   const [activityError, setActivityError] = useState("");
+  const [noticeCount, setNoticeCount] = useState<number | null>(null);
+  const [noticeError, setNoticeError] = useState("");
 
   useEffect(() => {
     let controller: AbortController | null = null;
@@ -214,6 +216,42 @@ export default function HomePage() {
       window.clearTimeout(timeout);
       controller?.abort();
     };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadNoticeCount() {
+      try {
+        const response = await fetch("/api/notices", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            result &&
+              typeof result === "object" &&
+              "error" in result &&
+              typeof result.error === "string"
+              ? result.error
+              : "Unable to load lab notices.",
+          );
+        }
+        if (!Array.isArray(result) || !result.every(isLabNotice)) {
+          throw new Error("Lab notices were returned in an unexpected format.");
+        }
+        setNoticeCount(result.length);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.error("Unable to load student lab notices:", error);
+        setNoticeError(
+          error instanceof Error ? error.message : "Unable to load lab notices.",
+        );
+      }
+    }
+
+    void loadNoticeCount();
+    return () => controller.abort();
   }, []);
 
   const overdueCount =
@@ -336,8 +374,14 @@ export default function HomePage() {
             >
               <h2 className="mb-2 font-semibold text-ink">{card.title}</h2>
               {card.title === "Lab notices" && (
-                <p className="mb-2 text-sm text-ink">
-                  {mockNotices.length} notices available.
+                <p
+                  className={`mb-2 text-sm ${noticeError ? "text-alert-text" : "text-ink"}`}
+                  role={noticeError ? "alert" : undefined}
+                >
+                  {noticeError ??
+                    (noticeCount === null
+                      ? "Loading notices..."
+                      : `${noticeCount} notices available.`)}
                 </p>
               )}
               {card.title !== "Lab notices" && (
