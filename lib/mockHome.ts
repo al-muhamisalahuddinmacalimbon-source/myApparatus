@@ -1,6 +1,6 @@
 export type HomeCard = {
   title: string;
-  description: string;
+  description?: string;
   actionLabel: string;
   href: string;
 };
@@ -8,7 +8,7 @@ export type HomeCard = {
 export const mockHomeCards: HomeCard[] = [
   {
     title: "My Bookings",
-    description: "3 items currently borrowed across 2 labs.",
+    description: "See your active equipment borrowings and due dates.",
     actionLabel: "View bookings",
     href: "/my-bookings",
   },
@@ -20,7 +20,6 @@ export const mockHomeCards: HomeCard[] = [
   },
   {
     title: "Machines free today",
-    description: "4 devices are available now.",
     actionLabel: "Browse machines",
     href: "/reserve",
   },

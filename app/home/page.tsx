@@ -39,6 +39,38 @@ type DashboardActivity = {
   upcomingReservations: UpcomingReservation[];
 };
 
+type ActiveBorrowingItem = {
+  name: string;
+  quantity: number;
+};
+
+type ActiveBorrowing = {
+  items: ActiveBorrowingItem[];
+};
+
+function isActiveBorrowingItem(value: unknown): value is ActiveBorrowingItem {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "quantity" in value &&
+    typeof value.quantity === "number" &&
+    Number.isInteger(value.quantity) &&
+    value.quantity > 0
+  );
+}
+
+function isActiveBorrowing(value: unknown): value is ActiveBorrowing {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "items" in value &&
+    Array.isArray(value.items) &&
+    value.items.every(isActiveBorrowingItem)
+  );
+}
+
 function isDashboardItem(value: unknown): value is DashboardItem {
   return (
     typeof value === "object" &&
@@ -138,6 +170,8 @@ export default function HomePage() {
   const [studentName, setStudentName] = useState<string>("Student");
   const [activity, setActivity] = useState<DashboardActivity | null>(null);
   const [activityError, setActivityError] = useState("");
+  const [borrowedItemCount, setBorrowedItemCount] = useState<number | null>(null);
+  const [borrowingsError, setBorrowingsError] = useState("");
   const [noticeCount, setNoticeCount] = useState<number | null>(null);
   const [noticeError, setNoticeError] = useState("");
 
@@ -177,6 +211,45 @@ export default function HomePage() {
       }
 
       controller = new AbortController();
+      async function loadBorrowedItemCount() {
+        try {
+          const response = await fetch(
+            `/api/students/${encodeURIComponent(studentId)}/loans`,
+            { cache: "no-store", signal: controller?.signal },
+          );
+          const result: unknown = await response.json();
+          if (!response.ok) {
+            const message =
+              result &&
+              typeof result === "object" &&
+              "error" in result &&
+              typeof result.error === "string"
+                ? result.error
+                : "Unable to load your current borrowings.";
+            throw new Error(message);
+          }
+          if (!Array.isArray(result) || !result.every(isActiveBorrowing)) {
+            throw new Error("Your borrowings were returned in an unexpected format.");
+          }
+          setBorrowedItemCount(
+            result.reduce(
+              (total, borrowing) =>
+                total +
+                borrowing.items.reduce((itemTotal, item) => itemTotal + item.quantity, 0),
+              0,
+            ),
+          );
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          console.error("Unable to load student borrowings for the home page.", error);
+          setBorrowingsError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load your current borrowings.",
+          );
+        }
+      }
+
       async function loadActivity() {
         try {
           const response = await fetch(
@@ -209,6 +282,7 @@ export default function HomePage() {
         }
       }
 
+      void loadBorrowedItemCount();
       void loadActivity();
     }, 0);
 
@@ -364,31 +438,46 @@ export default function HomePage() {
 
         <section
           aria-label="Dashboard information"
-          className="mb-4 grid gap-4 md:grid-cols-3"
+          className="mb-4 grid items-stretch gap-4 md:grid-cols-3"
         >
           {mockHomeCards.map((card) => (
             <article
-              className="rounded-lg border border-ink/30 border-t-[3px] border-t-accent bg-surface p-3"
+              className="flex h-full min-h-36 flex-col rounded-lg border border-ink/30 border-t-[3px] border-t-accent bg-surface p-3"
               id={card.title === "Lab notices" ? "lab-notices" : undefined}
               key={card.title}
             >
               <h2 className="mb-2 font-semibold text-ink">{card.title}</h2>
-              {card.title === "Lab notices" && (
-                <p
-                  className={`mb-2 text-sm ${noticeError ? "text-alert-text" : "text-ink"}`}
-                  role={noticeError ? "alert" : undefined}
-                >
-                  {noticeError ??
-                    (noticeCount === null
-                      ? "Loading notices..."
-                      : `${noticeCount} notices available.`)}
-                </p>
-              )}
-              {card.title !== "Lab notices" && (
-                  <p className="mb-2 text-sm text-ink">{card.description}</p>
-              )}
+              <div className="mb-3 flex-1">
+                {card.title === "Lab notices" ? (
+                  <p
+                    className={`text-sm ${noticeError ? "text-alert-text" : "text-ink"}`}
+                    role={noticeError ? "alert" : undefined}
+                  >
+                    {noticeError ??
+                      (noticeCount === null
+                        ? "Loading notices..."
+                        : `${noticeCount} notices available.`)}
+                  </p>
+                ) : card.title === "My Bookings" ? (
+                  <p
+                    className={`text-sm ${borrowingsError ? "text-alert-text" : "text-ink"}`}
+                    role={borrowingsError ? "alert" : undefined}
+                  >
+                    {borrowingsError ??
+                      (borrowedItemCount === null
+                        ? "Loading your current borrowings..."
+                        : `${borrowedItemCount} ${
+                            borrowedItemCount === 1 ? "item" : "items"
+                          } currently borrowed.`)}
+                  </p>
+                ) : (
+                  card.description && (
+                    <p className="text-sm text-ink">{card.description}</p>
+                  )
+                )}
+              </div>
               <Link
-                className="inline-flex rounded bg-maroon px-3 py-1.5 text-sm text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="mt-auto flex min-h-10 w-full items-center justify-center rounded bg-maroon px-3 py-2 text-center text-sm text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 href={card.href}
               >
                 {card.actionLabel}
