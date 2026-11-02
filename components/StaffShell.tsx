@@ -6,6 +6,7 @@ import {
   ClipboardList,
   LogOut,
   Menu,
+  Megaphone,
   Package,
   CalendarDays,
   RotateCcw,
@@ -69,6 +70,12 @@ const navigationItems = [
     label: "Reports",
     href: "/staff/reports",
     Icon: ChartNoAxesColumnIncreasing,
+    available: true,
+  },
+  {
+    label: "Lab Notices",
+    href: "/staff/notices",
+    Icon: Megaphone,
     available: true,
   },
 ];
