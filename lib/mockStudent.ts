@@ -1,9 +1,6 @@
-export type Student = {
-  studentId: string;
-  name: string;
-  course: string;
-  yearLevel: string;
-};
+import type { Student } from "@/types/student";
+
+export type { Student } from "@/types/student";
 
 export const mockStudents: Student[] = [
   {

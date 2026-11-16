@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import StaffShell from "../../../components/StaffShell";
+import StaffShell from "@/components/navigation/StaffShell";
 
 type LiabilityReportRow = {
   student_id: string;

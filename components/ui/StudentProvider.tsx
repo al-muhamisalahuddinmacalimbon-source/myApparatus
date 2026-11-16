@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, ReactNode, useContext, useState } from "react";
-import { mockStudents, Student } from "../lib/mockStudent";
+import { mockStudents } from "@/lib/mockStudent";
+import type { Student } from "@/types/student";
 
 type StudentContextValue = {
   students: Student[];

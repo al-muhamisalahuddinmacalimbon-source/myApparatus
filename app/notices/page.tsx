@@ -3,13 +3,13 @@
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import TopBar from "../../components/TopBar";
+import TopBar from "@/components/navigation/TopBar";
 import {
   getOrderedNotices,
   isLabNotice,
-  noticeCategories,
-  type LabNotice,
-} from "../../lib/notices";
+} from "@/lib/notices";
+import { noticeCategories } from "@/types/notice";
+import type { LabNotice } from "@/types/notice";
 
 const categories = ["All", ...noticeCategories] as const;
 type CategoryFilter = (typeof categories)[number];

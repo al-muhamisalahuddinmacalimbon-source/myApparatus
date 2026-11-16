@@ -2,8 +2,8 @@
 
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import StaffShell from "../../../components/StaffShell";
-import type { StaffLoan, StaffLoanItem } from "../../../lib/mockLoans";
+import StaffShell from "@/components/navigation/StaffShell";
+import type { StaffLoan, StaffLoanItem } from "@/types/reservation";
 
 type StatusFilter = "All" | "Overdue Only";
 

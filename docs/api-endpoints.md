@@ -10,6 +10,7 @@ The backend lives inside the Next.js app as route handlers under `app/api/`. Upd
 | `/api/students` | POST | Register a first-time student | US-11 | 2 | Planned |
 | `/api/borrow/submit` | POST | Save a borrower slip in one transaction | US-03 | 1 | Planned |
 | `/api/admin/active-loans` | GET | Active loans with Overdue flag, filter by student or status | US-06, US-09, US-18 | 1 | Planned |
+| `/api/admin/active-loans/[id]` | PATCH | Save or clear a remark on an active loan | Staff remarks | — | Available |
 | `/api/admin/login` | POST | Technician login | US-06 | 2 | Planned |
 | `/api/returns/[loanId]` | POST | Confirm return of a whole loan | US-07 | 2 | Planned |
 | `/api/returns/[loanId]/partial` | POST | Confirm return of selected items | US-17 | 2 | Planned |
@@ -32,6 +33,16 @@ psql -U postgres -d myapparatus -f database/migrations/003_lab_notices.sql
 ```
 
 Staff can publish, edit, pin, and delete notices from `/staff/notices`. Published notices are listed at `/notices` and can be opened individually.
+
+## Active loan remarks
+
+Apply `database/migrations/004_add_loan_remarks.sql` after the existing migrations to add the nullable `loans.remarks` column:
+
+```bash
+psql -U postgres -d myapparatus -f database/migrations/004_add_loan_remarks.sql
+```
+
+Send `PATCH /api/admin/active-loans/[id]` with `{ "remarks": "Brand new beaker issued" }`. Send `{ "remarks": null }` (or an empty string) to clear the remark. Only active loans can be updated. No seed changes are needed because the new column is nullable.
 
 ## Error format
 

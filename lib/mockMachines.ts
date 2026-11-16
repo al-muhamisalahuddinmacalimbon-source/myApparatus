@@ -1,7 +1,6 @@
-export type Machine = {
-  id: string;
-  name: string;
-};
+import type { Machine } from "@/types/reservation";
+
+export type { Machine } from "@/types/reservation";
 
 export const mockMachines: Machine[] = [
   { id: "furnace", name: "Furnace" },

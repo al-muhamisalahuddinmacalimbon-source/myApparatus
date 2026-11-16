@@ -1,5 +1,5 @@
 import Link from "next/link";
-import TopBar from "../../components/TopBar";
+import TopBar from "@/components/navigation/TopBar";
 
 const faqs = [
   {

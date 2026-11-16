@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import StaffShell from "../../../components/StaffShell";
+import StaffShell from "@/components/navigation/StaffShell";
 import {
   getOrderedNotices,
   isLabNotice,
-  noticeCategories,
-  type LabNotice,
-  type NoticeCategory,
-} from "../../../lib/notices";
+} from "@/lib/notices";
+import { noticeCategories } from "@/types/notice";
+import type { LabNotice, NoticeCategory } from "@/types/notice";
 
 type NoticeForm = {
   title: string;

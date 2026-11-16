@@ -15,9 +15,9 @@ import {
   Zap,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
-import TopBar from "../../components/TopBar";
-import CartDrawer, { type CartItem } from "../../components/student/CartDrawer";
-import BorrowerSlip from "../../components/student/BorrowerSlip";
+import TopBar from "@/components/navigation/TopBar";
+import CartDrawer, { type CartItem } from "@/components/ui/CartDrawer";
+import BorrowerSlip from "@/components/ui/BorrowerSlip";
 
 interface Apparatus {
   id: number;

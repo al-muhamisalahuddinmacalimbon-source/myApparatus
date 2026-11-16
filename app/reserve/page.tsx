@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import TopBar from "../../components/TopBar";
-import { mockMachines, type Machine } from "../../lib/mockMachines";
+import TopBar from "@/components/navigation/TopBar";
+import { mockMachines } from "@/lib/mockMachines";
+import type { Machine } from "@/types/reservation";
 
 type Reservation = {
   id: number;

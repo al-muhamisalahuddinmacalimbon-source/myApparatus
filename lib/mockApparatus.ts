@@ -1,16 +1,6 @@
-export type ApparatusCategory =
-  | "Glassware"
-  | "Electronics"
-  | "Tools"
-  | "Machines"
-  | "Safety";
+import type { Apparatus } from "@/types/reservation";
 
-export type Apparatus = {
-  id: string;
-  name: string;
-  category: ApparatusCategory;
-  availableStock: number;
-};
+export type { Apparatus, ApparatusCategory } from "@/types/reservation";
 
 export const mockApparatus: Apparatus[] = [
   { id: "EQ-1042", name: "Erlenmeyer Flask", category: "Glassware", availableStock: 8 },

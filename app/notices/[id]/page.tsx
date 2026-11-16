@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import TopBar from "../../../components/TopBar";
-import pool from "../../../lib/db";
+import TopBar from "@/components/navigation/TopBar";
 import {
   getOrderedNotices,
   isLabNotice,
-} from "../../../lib/notices";
+} from "@/lib/notices";
+import { getNoticesForDetail } from "@/lib/services/noticeService";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +24,11 @@ export default async function NoticeDetailPage({
   const noticeId = Number(id);
   if (!Number.isInteger(noticeId) || noticeId < 1) notFound();
 
-  const result = await pool.query(
-    `SELECT id, title, category, body, pinned, created_at::text AS created_at
-     FROM lab_notices
-     ORDER BY pinned DESC, created_at DESC`,
-  );
-  if (!result.rows.every(isLabNotice)) {
+  const noticeRows = await getNoticesForDetail();
+  if (!noticeRows.every(isLabNotice)) {
     throw new Error("Lab notices were returned in an unexpected format.");
   }
-  const notices = getOrderedNotices(result.rows);
+  const notices = getOrderedNotices(noticeRows);
   const noticeIndex = notices.findIndex((notice) => notice.id === noticeId);
   if (noticeIndex < 0) notFound();
 

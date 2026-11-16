@@ -8,9 +8,9 @@ import {
   PackagePlus,
 } from "lucide-react";
 import Link from "next/link";
-import TopBar from "../../components/TopBar";
+import TopBar from "@/components/navigation/TopBar";
 import { mockHomeCards } from "../../lib/mockHome";
-import { isLabNotice } from "../../lib/notices";
+import { isLabNotice } from "@/lib/notices";
 
 type DashboardItem = {
   name: string;

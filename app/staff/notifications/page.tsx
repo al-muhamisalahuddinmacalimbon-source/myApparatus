@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import StaffShell from "../../../components/StaffShell";
+import StaffShell from "@/components/navigation/StaffShell";
 
 type StaffNotification = {
   id: number;

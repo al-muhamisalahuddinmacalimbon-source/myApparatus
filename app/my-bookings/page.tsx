@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import TopBar from "../../components/TopBar";
+import TopBar from "@/components/navigation/TopBar";
 
 type DueFilter = "all" | "due-soon" | "overdue";
 

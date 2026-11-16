@@ -2,11 +2,11 @@
 
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import StaffShell from "../../../components/StaffShell";
+import StaffShell from "@/components/navigation/StaffShell";
 import type {
   BorrowingHistoryItem,
   StudentBorrowingHistory,
-} from "../../../lib/mockLoans";
+} from "@/types/reservation";
 
 function isHistoryItem(value: unknown): value is BorrowingHistoryItem {
   return (

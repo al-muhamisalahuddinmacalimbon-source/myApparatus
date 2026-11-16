@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import StaffShell from "../../../components/StaffShell";
-import { mockMachines, type Machine } from "../../../lib/mockMachines";
+import StaffShell from "@/components/navigation/StaffShell";
+import { mockMachines } from "@/lib/mockMachines";
+import type { Machine } from "@/types/reservation";
 
 type StaffReservation = {
   id: number;

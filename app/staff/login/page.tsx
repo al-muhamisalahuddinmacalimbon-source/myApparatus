@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { mockStaff } from "../../../lib/mockStaff";
+import { mockStaff } from "@/lib/mockStaff";
 
 export default function StaffLoginPage() {
   const router = useRouter();

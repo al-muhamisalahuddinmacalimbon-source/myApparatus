@@ -1,9 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Student } from "../lib/mockStudent";
+import type { Student } from "@/types/student";
 
-type RegisterModalProps = {
+type StudentSignupFormProps = {
   initialStudentId: string;
   onSave: (student: Student) => Promise<void>;
   onCancel: () => void;
@@ -16,11 +16,11 @@ type RegistrationFields = {
   yearLevel: string;
 };
 
-export default function RegisterModal({
+export default function StudentSignupForm({
   initialStudentId,
   onSave,
   onCancel,
-}: RegisterModalProps) {
+}: StudentSignupFormProps) {
   const [fields, setFields] = useState<RegistrationFields>({
     studentId: initialStudentId,
     name: "",

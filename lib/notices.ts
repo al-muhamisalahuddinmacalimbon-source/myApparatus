@@ -1,15 +1,8 @@
-export const noticeCategories = ["Schedule", "Safety", "Announcements"] as const;
+import { noticeCategories } from "@/types/notice";
+import type { LabNotice } from "@/types/notice";
 
-export type NoticeCategory = (typeof noticeCategories)[number];
-
-export type LabNotice = {
-  id: number;
-  title: string;
-  category: NoticeCategory;
-  body: string;
-  pinned: boolean;
-  created_at: string;
-};
+export { noticeCategories } from "@/types/notice";
+export type { LabNotice, NoticeCategory } from "@/types/notice";
 
 export function isLabNotice(value: unknown): value is LabNotice {
   return (

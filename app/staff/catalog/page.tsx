@@ -17,8 +17,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import StaffShell from "../../../components/StaffShell";
-import type { ApparatusCategory } from "../../../lib/mockApparatus";
+import StaffShell from "@/components/navigation/StaffShell";
+import type { ApparatusCategory } from "@/types/reservation";
 
 type CatalogItem = {
   id: number;

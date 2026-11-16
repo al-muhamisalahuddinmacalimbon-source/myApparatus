@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useRef, useState } from "react";
-import RegisterModal from "../components/RegisterModal";
-import type { Student } from "../lib/mockStudent";
+import StudentSignupForm from "@/components/forms/StudentSignupForm";
+import type { Student } from "@/types/student";
 
 export default function Home() {
   const router = useRouter();
@@ -150,7 +150,7 @@ export default function Home() {
       </main>
 
       {showRegistration && (
-        <RegisterModal
+        <StudentSignupForm
           onCancel={handleRegistrationCancel}
           onSave={handleRegistrationSave}
           initialStudentId={studentId.trim()}

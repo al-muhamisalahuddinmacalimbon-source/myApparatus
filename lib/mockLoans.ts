@@ -1,56 +1,14 @@
-export type StaffLoanStatus = "Active" | "Overdue";
+import type { StaffLoan } from "@/types/reservation";
 
-export type StaffLoanItem = {
-  name: string;
-  quantity: number;
-};
-
-export type ReturnLoanItem = StaffLoanItem & {
-  loanItemId: number;
-  dueAt: string;
-};
-
-export type StudentActiveLoans = {
-  studentId: string;
-  studentName: string;
-  loans: Array<{
-    loanId: number;
-    borrowedAt: string;
-    dueAt: string;
-    items: ReturnLoanItem[];
-  }>;
-};
-
-export type BorrowingHistoryItem = {
-  loanItemId: number;
-  name: string;
-  quantity: number;
-  returnedQuantity: number;
-  activeQuantity: number;
-};
-
-export type StudentBorrowingHistory = {
-  studentId: string;
-  studentName: string;
-  loans: Array<{
-    loanId: number;
-    borrowedAt: string;
-    dueAt: string;
-    returnedAt: string | null;
-    status: StaffLoanStatus | "Returned";
-    items: BorrowingHistoryItem[];
-  }>;
-};
-
-export type StaffLoan = {
-  loanId: number;
-  studentId: string;
-  studentName: string;
-  items: StaffLoanItem[];
-  borrowedAt: string;
-  dueAt: string;
-  status: StaffLoanStatus;
-};
+export type {
+  BorrowingHistoryItem,
+  ReturnLoanItem,
+  StaffLoan,
+  StaffLoanItem,
+  StaffLoanStatus,
+  StudentActiveLoans,
+  StudentBorrowingHistory,
+} from "@/types/reservation";
 
 export const mockLoans: StaffLoan[] = [
   {
@@ -64,6 +22,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-30T09:00:00+08:00",
     dueAt: "2026-11-02T09:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 2,
@@ -76,6 +35,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-24T09:00:00+08:00",
     dueAt: "2026-10-29T09:00:00+08:00",
     status: "Overdue",
+    remarks: null,
   },
   {
     loanId: 3,
@@ -85,6 +45,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-25T08:00:00+08:00",
     dueAt: "2026-10-30T08:00:00+08:00",
     status: "Overdue",
+    remarks: null,
   },
   {
     loanId: 4,
@@ -94,6 +55,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-26T08:00:00+08:00",
     dueAt: "2026-11-02T08:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 5,
@@ -103,6 +65,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-27T08:00:00+08:00",
     dueAt: "2026-10-31T08:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 6,
@@ -112,6 +75,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-28T08:00:00+08:00",
     dueAt: "2026-11-03T08:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 7,
@@ -121,6 +85,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-29T08:00:00+08:00",
     dueAt: "2026-11-05T08:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 8,
@@ -130,6 +95,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-30T08:00:00+08:00",
     dueAt: "2026-11-06T08:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 9,
@@ -139,6 +105,7 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-30T09:00:00+08:00",
     dueAt: "2026-11-07T09:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
   {
     loanId: 10,
@@ -148,5 +115,6 @@ export const mockLoans: StaffLoan[] = [
     borrowedAt: "2026-10-30T10:00:00+08:00",
     dueAt: "2026-11-08T10:00:00+08:00",
     status: "Active",
+    remarks: null,
   },
 ];
