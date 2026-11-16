@@ -3,6 +3,8 @@
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import StaffShell from "@/components/navigation/StaffShell";
+import Modal from "@/components/ui/Modal";
+import BorrowerSlip from "@/components/ui/BorrowerSlip";
 import type { StaffLoan, StaffLoanItem } from "@/types/reservation";
 
 type StatusFilter = "All" | "Overdue Only";
@@ -36,7 +38,9 @@ function isStaffLoan(value: unknown): value is StaffLoan {
     "dueAt" in value &&
     typeof value.dueAt === "string" &&
     "status" in value &&
-    (value.status === "Active" || value.status === "Overdue")
+    (value.status === "Active" || value.status === "Overdue") &&
+    "remarks" in value &&
+    (typeof value.remarks === "string" || value.remarks === null)
   );
 }
 
@@ -77,6 +81,11 @@ export default function StaffDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [returningLoanId, setReturningLoanId] = useState<number | null>(null);
+  const [savingRemarkId, setSavingRemarkId] = useState<number | null>(null);
+  const [remarkEditorLoanId, setRemarkEditorLoanId] = useState<number | null>(null);
+  const [remarkDraft, setRemarkDraft] = useState("");
+  const [remarkError, setRemarkError] = useState("");
+  const [selectedLoan, setSelectedLoan] = useState<StaffLoan | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,11 +101,15 @@ export default function StaffDashboardPage() {
         if (!response.ok) {
           throw new Error(getErrorMessage(payload, "Unable to load active loans."));
         }
-        if (!Array.isArray(payload) || !payload.every(isStaffLoan)) {
+        if (!Array.isArray(payload)) {
+          throw new Error("The active loans response was invalid.");
+        }
+        const activeLoans = payload.filter(isStaffLoan);
+        if (activeLoans.length !== payload.length) {
           throw new Error("The active loans response was invalid.");
         }
 
-        setLoans(payload);
+        setLoans(activeLoans);
       } catch (loadError) {
         if (controller.signal.aborted) return;
         console.error("Unable to load active loans:", loadError);
@@ -121,7 +134,8 @@ export default function StaffDashboardPage() {
         !query ||
         loan.studentId.toLowerCase().includes(query) ||
         loan.studentName.toLowerCase().includes(query) ||
-        loan.items.some((item) => item.name.toLowerCase().includes(query));
+        loan.items.some((item) => item.name.toLowerCase().includes(query)) ||
+        loan.remarks?.toLowerCase().includes(query);
       const matchesStatus =
         statusFilter === "All" || loan.status === "Overdue";
       return matchesSearch && matchesStatus;
@@ -146,6 +160,9 @@ export default function StaffDashboardPage() {
       setLoans((currentLoans) =>
         currentLoans.filter((loan) => loan.loanId !== loanId),
       );
+      setSelectedLoan((currentLoan) =>
+        currentLoan?.loanId === loanId ? null : currentLoan,
+      );
     } catch (returnError) {
       console.error("Unable to confirm equipment return:", returnError);
       setError(
@@ -158,16 +175,74 @@ export default function StaffDashboardPage() {
     }
   }
 
+  async function saveRemark() {
+    if (remarkEditorLoanId === null) return;
+
+    const loanId = remarkEditorLoanId;
+    setSavingRemarkId(loanId);
+    setRemarkError("");
+
+    try {
+      const response = await fetch(`/api/admin/active-loans/${loanId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remarks: remarkDraft }),
+      });
+      const payload: unknown = await response.json();
+
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, "Unable to save this remark."));
+      }
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        !("loanId" in payload) ||
+        payload.loanId !== loanId ||
+        !("remarks" in payload) ||
+        (typeof payload.remarks !== "string" && payload.remarks !== null)
+      ) {
+        throw new Error("The loan remarks API returned an invalid response.");
+      }
+
+      const savedRemarks = payload.remarks;
+      setLoans((currentLoans) =>
+        currentLoans.map((loan) =>
+          loan.loanId === loanId ? { ...loan, remarks: savedRemarks } : loan,
+        ),
+      );
+      setSelectedLoan((currentLoan) =>
+        currentLoan?.loanId === loanId
+          ? { ...currentLoan, remarks: savedRemarks }
+          : currentLoan,
+      );
+      setRemarkDraft(savedRemarks ?? "");
+      setRemarkEditorLoanId(null);
+    } catch (saveError) {
+      console.error("Unable to save active loan remark:", saveError);
+      setRemarkError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save this remark.",
+      );
+    } finally {
+      setSavingRemarkId(null);
+    }
+  }
+
+  const remarkEditorLoan = loans.find(
+    (loan) => loan.loanId === remarkEditorLoanId,
+  );
+
   return (
     <StaffShell>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink">Active Loans</h1>
-        <div className="flex flex-wrap gap-2">
-          <label className="flex h-10 items-center gap-2 rounded border border-ink/40 bg-surface px-3 text-ink">
+        <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">
+          <label className="flex h-10 w-full min-w-0 items-center gap-2 rounded border border-ink/40 bg-surface px-3 text-ink sm:w-48">
             <Search aria-hidden="true" className="size-4 text-ink/60" />
             <span className="sr-only">Search student or item</span>
             <input
-              className="w-48 bg-transparent text-sm outline-none placeholder:text-ink/60"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-ink/60"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search student or item"
               type="search"
@@ -178,7 +253,7 @@ export default function StaffDashboardPage() {
             Filter loan status
           </label>
           <select
-            className="h-10 rounded border border-ink/40 bg-surface px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="h-10 w-full rounded border border-ink/40 bg-surface px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:w-auto"
             id="loan-status"
             onChange={(event) => {
               setStatusFilter(
@@ -202,102 +277,208 @@ export default function StaffDashboardPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-ink/40 border-t-[3px] border-t-accent bg-surface">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px] border-collapse text-left text-sm text-ink">
-            <thead className="bg-page">
-              <tr className="border-b border-ink/20">
-                <th className="px-3 py-3 font-semibold" scope="col">
-                  Student
-                </th>
-                <th className="px-3 py-3 font-semibold" scope="col">
-                  Apparatus
-                </th>
-                <th className="px-3 py-3 font-semibold" scope="col">
-                  Checkout date and time
-                </th>
-                <th className="px-3 py-3 font-semibold" scope="col">
-                  Due date
-                </th>
-                <th className="px-3 py-3 font-semibold" scope="col">
-                  Status
-                </th>
-                <th className="px-3 py-3 font-semibold" scope="col">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td className="px-3 py-6 text-center" colSpan={6}>
-                    Loading active loans...
-                  </td>
-                </tr>
-              ) : filteredLoans.length > 0 ? (
-                filteredLoans.map((loan) => {
-                  const isOverdue = loan.status === "Overdue";
-                  return (
-                    <tr
+      {loading ? (
+        <p
+          className="rounded-lg border border-ink/20 bg-surface px-4 py-8 text-center text-sm text-ink"
+          role="status"
+        >
+          Loading active loans...
+        </p>
+      ) : filteredLoans.length > 0 ? (
+        <ul aria-label="Active loans" className="space-y-3">
+          {filteredLoans.map((loan) => {
+            const isOverdue = loan.status === "Overdue";
+            return (
+              <li key={loan.loanId}>
+                <article
+                  className={`min-w-0 rounded-lg border border-ink/20 border-l-4 p-4 shadow-sm ${
+                    isOverdue
+                      ? "border-l-alert bg-alert/10"
+                      : "border-l-maroon bg-surface"
+                  }`}
+                >
+                  <header className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="break-words text-base font-semibold text-ink">
+                        {loan.studentName}
+                      </h2>
+                      <p className="text-sm text-ink/70">{loan.studentId}</p>
+                    </div>
+                    <span
                       className={
                         isOverdue
-                          ? "border-b border-ink/15 bg-alert/40 text-alert-text"
-                          : "border-b border-ink/15 last:border-0"
+                          ? "shrink-0 rounded bg-alert px-2 py-1 text-xs font-semibold text-alert-text"
+                          : "shrink-0 rounded bg-success px-2 py-1 text-xs font-semibold text-surface"
                       }
-                      key={loan.loanId}
                     >
-                      <td className="px-3 py-3">
-                        <div className="font-semibold">{loan.studentName}</div>
-                        <div className="text-xs opacity-80">{loan.studentId}</div>
-                      </td>
-                      <td className="px-3 py-3">
+                      {isOverdue ? "Overdue" : "Active"}
+                    </span>
+                  </header>
+
+                  <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+                        Apparatus
+                      </dt>
+                      <dd className="mt-1 break-words text-ink">
                         {loan.items
                           .map((item) => `${item.name} x${item.quantity}`)
                           .join(", ")}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+                        Checked out
+                      </dt>
+                      <dd className="mt-1 text-ink">
                         {formatDateTime(loan.borrowedAt)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        {formatDate(loan.dueAt)}
-                      </td>
-                      <td className="px-3 py-3">
-                        <span
-                          className={
-                            isOverdue
-                              ? "rounded bg-alert px-2 py-1 text-xs font-semibold text-alert-text"
-                              : "rounded bg-success px-2 py-1 text-xs font-semibold text-surface"
-                          }
-                        >
-                          {isOverdue ? "Overdue" : "Active"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <button
-                          className="min-h-9 rounded bg-maroon px-3 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                          disabled={returningLoanId === loan.loanId}
-                          onClick={() => void confirmReturn(loan.loanId)}
-                          type="button"
-                        >
-                          {returningLoanId === loan.loanId
-                            ? "Processing..."
-                            : "Confirm Return"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td className="px-3 py-6 text-center" colSpan={6}>
-                    No active loans match your filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+                        Due date
+                      </dt>
+                      <dd className="mt-1 text-ink">{formatDate(loan.dueAt)}</dd>
+                    </div>
+                  </dl>
+
+                  <section
+                    aria-label={`Staff remark for ${loan.studentName}`}
+                    className="mt-4 flex min-w-0 flex-col gap-3 rounded-md bg-page p-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink/60">
+                        Staff remark
+                      </h3>
+                      <p className="mt-1 break-words whitespace-pre-wrap text-sm text-ink">
+                        {loan.remarks?.trim() || "No staff remark recorded."}
+                      </p>
+                    </div>
+                    <button
+                      className="min-h-9 shrink-0 self-start rounded bg-maroon px-3 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      disabled={
+                        savingRemarkId !== null ||
+                        returningLoanId === loan.loanId
+                      }
+                      onClick={() => {
+                        setRemarkDraft(loan.remarks ?? "");
+                        setRemarkError("");
+                        setRemarkEditorLoanId(loan.loanId);
+                      }}
+                      type="button"
+                    >
+                      {loan.remarks ? "Edit remark" : "Add remark"}
+                    </button>
+                  </section>
+
+                  <footer className="mt-4 flex flex-wrap gap-2 border-t border-ink/15 pt-3">
+                    <button
+                      className="min-h-9 rounded border border-ink/30 px-3 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      onClick={() => setSelectedLoan(loan)}
+                      type="button"
+                    >
+                      View slip
+                    </button>
+                    <button
+                      className="min-h-9 rounded bg-maroon px-3 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      disabled={
+                        returningLoanId === loan.loanId ||
+                        savingRemarkId === loan.loanId
+                      }
+                      onClick={() => void confirmReturn(loan.loanId)}
+                      type="button"
+                    >
+                      {returningLoanId === loan.loanId
+                        ? "Processing..."
+                        : "Confirm Return"}
+                    </button>
+                  </footer>
+                </article>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="rounded-lg border border-ink/20 bg-surface px-4 py-8 text-center text-sm text-ink">
+          No active loans match your filters.
+        </p>
+      )}
+      {remarkEditorLoan && (
+        <Modal
+          onClose={() => {
+            if (savingRemarkId !== null) return;
+            setRemarkEditorLoanId(null);
+          }}
+          title={remarkEditorLoan.remarks ? "Edit staff remark" : "Add staff remark"}
+        >
+          <form
+            className="space-y-4 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveRemark();
+            }}
+          >
+            <p className="text-sm text-ink">
+              {remarkEditorLoan.studentName} · Loan #{remarkEditorLoan.loanId}
+            </p>
+            <label
+              className="block text-sm font-semibold text-ink"
+              htmlFor="staff-loan-remark"
+            >
+              Remark
+              <textarea
+                autoComplete="off"
+                className="mt-1 min-h-28 w-full resize-y rounded border border-ink/30 bg-surface px-3 py-2 font-normal text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                id="staff-loan-remark"
+                onChange={(event) => setRemarkDraft(event.target.value)}
+                placeholder="Add a note about this loan..."
+                value={remarkDraft}
+              />
+            </label>
+            {remarkError && (
+              <p className="rounded bg-alert px-3 py-2 text-sm text-alert-text" role="alert">
+                {remarkError}
+              </p>
+            )}
+            <p className="text-xs text-ink/70">
+              Leave the remark empty to clear it.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="min-h-10 rounded border border-ink/30 px-4 text-sm font-semibold text-ink hover:bg-page disabled:opacity-60"
+                disabled={savingRemarkId !== null}
+                onClick={() => setRemarkEditorLoanId(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="min-h-10 rounded bg-maroon px-4 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                disabled={savingRemarkId !== null}
+                type="submit"
+              >
+                {savingRemarkId !== null ? "Saving..." : "Save remark"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {selectedLoan && (
+        <BorrowerSlip
+          dueAt={new Date(selectedLoan.dueAt)}
+          items={selectedLoan.items.map((item, index) => ({
+            id: index,
+            name: item.name,
+            quantity: item.quantity,
+          }))}
+          onClose={() => setSelectedLoan(null)}
+          remarks={selectedLoan.remarks}
+          studentId={selectedLoan.studentId}
+          studentName={selectedLoan.studentName}
+          submittedAt={new Date(selectedLoan.borrowedAt)}
+          title="Borrower Slip"
+        />
+      )}
     </StaffShell>
   );
 }

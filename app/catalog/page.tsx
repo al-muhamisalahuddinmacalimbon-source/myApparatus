@@ -91,20 +91,26 @@ function isBorrowedItems(
 }
 
 type BorrowResponse = {
+  loan_id: number;
   items: Array<{ id: number; name: string; quantity: number }>;
   borrowed_at: string;
   due_at: string;
+  remarks: string | null;
 };
 
 function isBorrowResponse(value: unknown): value is BorrowResponse {
   if (!value || typeof value !== "object") return false;
   return (
+    "loan_id" in value &&
+    typeof value.loan_id === "number" &&
     "items" in value &&
     isBorrowedItems(value.items) &&
     "borrowed_at" in value &&
     typeof value.borrowed_at === "string" &&
     "due_at" in value &&
-    typeof value.due_at === "string"
+    typeof value.due_at === "string" &&
+    "remarks" in value &&
+    (typeof value.remarks === "string" || value.remarks === null)
   );
 }
 
@@ -157,6 +163,7 @@ export default function CatalogPage() {
     items: CartItem[];
     submittedAt: Date;
     dueAt: Date;
+    remarks: string | null;
   } | null>(null);
   const [student, setStudent] = useState({ id: "", name: "" });
   const [apparatusList, setApparatusList] = useState<Apparatus[]>([]);
@@ -441,6 +448,7 @@ export default function CatalogPage() {
         })),
         submittedAt: new Date(result.borrowed_at),
         dueAt: new Date(result.due_at),
+        remarks: result.remarks,
       });
       setApparatusList((currentList) =>
         currentList.map((apparatus) => {
@@ -613,6 +621,7 @@ export default function CatalogPage() {
           dueAt={submittedSlip.dueAt}
           items={submittedSlip.items}
           onClose={closeBorrowerSlip}
+          remarks={submittedSlip.remarks}
           studentId={student.id}
           studentName={student.name}
           submittedAt={submittedSlip.submittedAt}

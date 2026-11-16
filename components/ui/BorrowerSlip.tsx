@@ -4,12 +4,14 @@ import Modal from "@/components/ui/Modal";
 import type { CartItem } from "./CartDrawer";
 
 type BorrowerSlipProps = {
-  items: CartItem[];
+  items: Array<Pick<CartItem, "id" | "name" | "quantity">>;
   onClose: () => void;
   studentId: string;
   studentName: string;
   submittedAt: Date;
   dueAt: Date;
+  remarks: string | null;
+  title?: string;
 };
 
 function formatBorrowDate(date: Date) {
@@ -37,9 +39,11 @@ export default function BorrowerSlip({
   studentName,
   submittedAt,
   dueAt,
+  remarks,
+  title = "Borrowing Request Submitted",
 }: BorrowerSlipProps) {
   return (
-    <Modal onClose={onClose} title="Borrowing Request Submitted">
+    <Modal onClose={onClose} title={title}>
       <div className="space-y-4 p-4">
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
@@ -51,6 +55,16 @@ export default function BorrowerSlip({
             <dd className="mt-1 font-semibold text-ink">{studentId}</dd>
           </div>
         </dl>
+
+        <section
+          aria-label="Staff remark"
+          className="rounded border border-ink/20 bg-page p-3 text-sm"
+        >
+          <h3 className="font-semibold text-ink">Staff remark</h3>
+          <p className="mt-1 whitespace-pre-wrap text-ink">
+            {remarks?.trim() || "No staff remark recorded."}
+          </p>
+        </section>
 
         <section aria-label="Borrowed items">
           <h3 className="mb-2 text-sm font-semibold text-ink">Borrowed items</h3>

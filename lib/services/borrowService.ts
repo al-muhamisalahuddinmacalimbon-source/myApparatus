@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     const loanResult = await client.query(
       `INSERT INTO loans (student_id, due_at, status)
        VALUES ($1, CURRENT_TIMESTAMP + ($2 * INTERVAL '1 day'), 'Active')
-       RETURNING id AS loan_id, borrowed_at, due_at`,
+       RETURNING id AS loan_id, borrowed_at, due_at, remarks`,
       [studentId.trim(), dueDays],
     );
     const loan = loanResult.rows[0];
@@ -156,6 +156,7 @@ export async function POST(request: Request) {
       loan_id: loan.loan_id,
       borrowed_at: loan.borrowed_at,
       due_at: loan.due_at,
+      remarks: loan.remarks,
       items: borrowedItems,
     });
   } catch (error) {
