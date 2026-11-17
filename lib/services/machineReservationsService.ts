@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 
 function isValidTimestamp(value: string | null): value is string {
   return value !== null && Number.isFinite(Date.parse(value));
@@ -115,16 +116,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await client.query(
-      `INSERT INTO reservations (machine_id, student_id, start_time, end_time)
-       SELECT id, $2, $3::timestamptz, $4::timestamptz
+    const machineResult = await client.query<{ id: number }>(
+      `SELECT id
        FROM machines
-       WHERE name = $1 AND status = 'Active'
-       RETURNING id, start_time, end_time, student_id`,
-      [machine, studentId.trim(), startTime, endTime],
+       WHERE name = $1 AND status = 'available'
+       FOR UPDATE`,
+      [machine],
     );
-
-    if (result.rowCount === 0) {
+    if (machineResult.rowCount === 0) {
       await client.query("ROLLBACK");
       transactionStarted = false;
       return NextResponse.json(
@@ -132,6 +131,13 @@ export async function POST(request: Request) {
         { status: 404 },
       );
     }
+
+    const result = await client.query(
+      `INSERT INTO reservations (machine_id, student_id, start_time, end_time)
+       VALUES ($1, $2, $3::timestamptz, $4::timestamptz)
+       RETURNING id, start_time, end_time, student_id`,
+      [machineResult.rows[0].id, studentId.trim(), startTime, endTime],
+    );
 
     await client.query(
       `INSERT INTO staff_notifications (event_type, student_id, message)
@@ -141,6 +147,12 @@ export async function POST(request: Request) {
         `${student.rows[0].full_name} reserved ${machine} for ${new Date(startTime).toLocaleString()}.`,
       ],
     );
+    await addStudentNotification(client, {
+      studentId: studentId.trim(),
+      eventType: "Reservation",
+      message: `Your reservation for ${machine} on ${new Date(startTime).toLocaleString()} has been confirmed.`,
+      href: "/reserve",
+    });
     await client.query("COMMIT");
     transactionStarted = false;
     return NextResponse.json(
