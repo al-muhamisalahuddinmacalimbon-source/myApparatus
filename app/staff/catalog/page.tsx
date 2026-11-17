@@ -129,6 +129,9 @@ function getIcon(name: string) {
 export default function StaffCatalogPage() {
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<ApparatusCategory | "All Types">(
+    "All Types",
+  );
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isWindowOpen, setIsWindowOpen] = useState(false);
   const [form, setForm] = useState<ApparatusForm>(emptyForm);
@@ -192,13 +195,23 @@ export default function StaffCatalogPage() {
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) return items;
     return items.filter(
-      (item) =>
-        item.name.toLocaleLowerCase().includes(query) ||
-        item.category.toLocaleLowerCase().includes(query),
+      (item) => {
+        const matchesCategory =
+          selectedCategory === "All Types" || item.category === selectedCategory;
+        const matchesSearch =
+          !query ||
+          item.name.toLocaleLowerCase().includes(query) ||
+          item.category.toLocaleLowerCase().includes(query);
+        return matchesCategory && matchesSearch;
+      },
     );
-  }, [items, search]);
+  }, [items, search, selectedCategory]);
+
+  const itemCategories = useMemo(
+    () => Array.from(new Set(items.map((item) => item.category))),
+    [items],
+  );
 
   function openAddWindow() {
     setEditingId(null);
@@ -369,16 +382,41 @@ export default function StaffCatalogPage() {
         </button>
       </div>
 
-      <label className="mb-4 block max-w-sm">
-        <span className="sr-only">Search apparatus</span>
-        <input
-          className="min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search apparatus"
-          type="search"
-          value={search}
-        />
-      </label>
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="block w-full max-w-sm">
+          <span className="sr-only">Search apparatus</span>
+          <input
+            className="min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search apparatus"
+            type="search"
+            value={search}
+          />
+        </label>
+        <label className="block w-full max-w-xs">
+          <span className="sr-only">Filter by apparatus type</span>
+          <select
+            className="min-h-10 w-full rounded-md border border-maroon/40 bg-surface px-3 py-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            onChange={(event) => {
+              const value = event.target.value;
+              const category = itemCategories.find(
+                (itemCategory) => itemCategory === value,
+              );
+              setSelectedCategory(
+                value === "All Types" ? "All Types" : category ?? "All Types",
+              );
+            }}
+            value={selectedCategory}
+          >
+            <option value="All Types">All Types</option>
+            {itemCategories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {error && (
         <p className="mb-3 rounded bg-alert px-3 py-2 text-sm text-alert-text" role="alert">
