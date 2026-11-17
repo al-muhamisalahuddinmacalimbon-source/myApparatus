@@ -2,8 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import StaffShell from "@/components/navigation/StaffShell";
-import { mockMachines } from "@/lib/mockMachines";
-import type { Machine } from "@/types/reservation";
+import type { MachineStatus } from "@/types/machine";
+
+type ReservationMachine = {
+  id: number;
+  name: string;
+  status: MachineStatus;
+};
 
 type StaffReservation = {
   id: number;
@@ -126,6 +131,22 @@ function getErrorMessage(value: unknown, fallback: string) {
   return fallback;
 }
 
+function isReservationMachine(value: unknown): value is ReservationMachine {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "number" &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "status" in value &&
+    (value.status === "available" ||
+      value.status === "in_use" ||
+      value.status === "maintenance" ||
+      value.status === "archived")
+  );
+}
+
 export default function StaffReservationsPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const weekStart = useMemo(() => {
@@ -151,7 +172,9 @@ export default function StaffReservationsPage() {
     return end;
   }, [weekStart]);
 
-  const [selectedMachine, setSelectedMachine] = useState<Machine>(mockMachines[0]);
+  const [machines, setMachines] = useState<ReservationMachine[]>([]);
+  const [selectedMachine, setSelectedMachine] =
+    useState<ReservationMachine | null>(null);
   const [reservations, setReservations] = useState<StaffReservation[]>([]);
   const [cancellationRequests, setCancellationRequests] = useState<
     CancellationRequest[]
@@ -161,21 +184,99 @@ export default function StaffReservationsPage() {
   const [selectedReservation, setSelectedReservation] =
     useState<StaffReservation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [machinesLoading, setMachinesLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
+  const [machinesError, setMachinesError] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
+    let initialLoad = true;
+
+    async function loadMachines() {
+      try {
+        const response = await fetch("/api/admin/machines", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(getErrorMessage(payload, "Unable to load machines."));
+        }
+        if (!Array.isArray(payload) || !payload.every(isReservationMachine)) {
+          throw new Error("The machines response was invalid.");
+        }
+
+        const availableMachines = payload.filter(
+          (machine) => machine.status === "available",
+        );
+        if (!active) return;
+        setMachines(availableMachines);
+        setMachinesError("");
+        setSelectedMachine((current) => {
+          if (!current) return availableMachines[0] ?? null;
+          const matchingMachine = availableMachines.find(
+            (machine) => machine.id === current.id,
+          );
+          if (!matchingMachine) return availableMachines[0] ?? null;
+          return matchingMachine.name === current.name
+            ? current
+            : matchingMachine;
+        });
+        if (availableMachines.length === 0) {
+          setReservations([]);
+          setSelectedReservation(null);
+          setLoading(false);
+        }
+      } catch (loadError) {
+        if (!active || controller.signal.aborted) return;
+        console.error("Unable to load reservation machines:", loadError);
+        setMachinesError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load machines.",
+        );
+        if (initialLoad) setLoading(false);
+      } finally {
+        if (active && initialLoad) {
+          setMachinesLoading(false);
+          initialLoad = false;
+        }
+      }
+    }
+
+    void loadMachines();
+    const interval = window.setInterval(() => void loadMachines(), 15_000);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedMachine) return;
+    const controller = new AbortController();
+    const selectedMachineName = selectedMachine.name;
+    let active = true;
+    let requestInFlight = false;
+    let hasLoaded = false;
 
     async function loadReservations() {
-      setLoading(true);
-      setError("");
+      if (requestInFlight) return;
+      requestInFlight = true;
+      if (!hasLoaded) {
+        setLoading(true);
+        setReservations([]);
+        setSelectedReservation(null);
+      }
       try {
         const query = new URLSearchParams({
           start: weekStart.toISOString(),
           end: weekEnd.toISOString(),
-          machine: selectedMachine.name,
+          machine: selectedMachineName,
         });
         const response = await fetch(`/api/admin/reservations?${query}`, {
           cache: "no-store",
@@ -193,9 +294,11 @@ export default function StaffReservationsPage() {
         ) {
           throw new Error("The reservations response was invalid.");
         }
+        if (!active) return;
         setReservations(payload);
+        setError("");
       } catch (loadError) {
-        if (controller.signal.aborted) return;
+        if (!active || controller.signal.aborted) return;
         console.error("Unable to load staff reservations:", loadError);
         setError(
           loadError instanceof Error
@@ -203,12 +306,23 @@ export default function StaffReservationsPage() {
             : "Unable to load reservations.",
         );
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        requestInFlight = false;
+        if (active && !controller.signal.aborted) {
+          setLoading(false);
+          hasLoaded = true;
+        }
       }
     }
 
     void loadReservations();
-    return () => controller.abort();
+    const interval = window.setInterval(() => void loadReservations(), 15_000);
+    window.addEventListener("focus", loadReservations);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", loadReservations);
+    };
   }, [selectedMachine, weekEnd, weekStart]);
 
   useEffect(() => {
@@ -362,18 +476,29 @@ export default function StaffReservationsPage() {
       </div>
 
       <section aria-label="Machine selector" className="mb-4">
+        {machinesLoading && (
+          <p className="mb-2 text-sm text-ink" role="status">
+            Loading available machines...
+          </p>
+        )}
+        {machinesError && (
+          <p className="mb-2 rounded bg-alert px-3 py-2 text-sm text-alert-text" role="alert">
+            {machinesError}
+          </p>
+        )}
         <div className="flex flex-wrap gap-2" role="tablist">
-          {mockMachines.map((machine) => (
+          {machines.map((machine) => (
             <button
-              aria-selected={selectedMachine.id === machine.id}
+              aria-selected={selectedMachine?.id === machine.id}
               className={
-                selectedMachine.id === machine.id
+                selectedMachine?.id === machine.id
                   ? "rounded-md bg-maroon px-3 py-1.5 text-sm font-semibold text-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   : "rounded-md border border-ink/40 bg-surface px-3 py-1.5 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               }
               key={machine.id}
               onClick={() => {
                 setSelectedMachine(machine);
+                setReservations([]);
                 setSelectedReservation(null);
                 setNotice("");
               }}
@@ -384,9 +509,15 @@ export default function StaffReservationsPage() {
             </button>
           ))}
         </div>
+        {!machinesLoading && !machinesError && machines.length === 0 && (
+          <p className="mt-2 rounded-md border border-ink/20 bg-page p-3 text-sm text-ink">
+            No available machines are currently listed in the catalog.
+          </p>
+        )}
       </section>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+      {selectedMachine ? (
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
         <section aria-label={`${selectedMachine.name} reservation calendar`}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold text-ink">
@@ -579,7 +710,8 @@ export default function StaffReservationsPage() {
             </p>
           )}
         </aside>
-      </div>
+        </div>
+      ) : null}
 
       <section
         aria-labelledby="cancellation-requests-heading"

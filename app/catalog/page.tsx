@@ -47,7 +47,6 @@ const categories = [
   "Glassware",
   "Electronics",
   "Tools",
-  "Machines",
   "Safety",
 ] as const;
 
@@ -251,8 +250,11 @@ export default function CatalogPage() {
       if (!Array.isArray(data) || !data.every(isApparatus)) {
         throw new Error("The equipment API returned data in an unexpected format.");
       }
-      setApparatusList(data);
-      setCart((currentCart) => reconcileCart(currentCart, data));
+      const apparatusOnly = data.filter(
+        (apparatus) => apparatus.category !== "Machines",
+      );
+      setApparatusList(apparatusOnly);
+      setCart((currentCart) => reconcileCart(currentCart, apparatusOnly));
       setCatalogError("");
     } catch (error) {
       if (signal.aborted) return;

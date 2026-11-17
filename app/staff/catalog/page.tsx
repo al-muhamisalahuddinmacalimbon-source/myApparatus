@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import StaffShell from "@/components/navigation/StaffShell";
+import type { CatalogMachine, MachineStatus } from "@/types/machine";
 import type { ApparatusCategory } from "@/types/reservation";
 
 type CatalogItem = {
@@ -39,12 +40,27 @@ type ApparatusForm = {
   icon: string;
 };
 
+type MachineForm = {
+  name: string;
+  model: string;
+  specifications: string;
+  status: MachineStatus;
+  notes: string;
+};
+
 const categories: ApparatusCategory[] = [
   "Glassware",
   "Electronics",
   "Tools",
   "Machines",
   "Safety",
+];
+
+const machineStatuses: MachineStatus[] = [
+  "available",
+  "in_use",
+  "maintenance",
+  "archived",
 ];
 
 const iconOptions: Array<{ name: string; Icon: LucideIcon }> = [
@@ -70,6 +86,14 @@ const emptyForm: ApparatusForm = {
   availableStock: "",
   status: "Active",
   icon: iconOptions[0].name,
+};
+
+const emptyMachineForm: MachineForm = {
+  name: "",
+  model: "",
+  specifications: "",
+  status: "available",
+  notes: "",
 };
 
 function isApparatusRecord(value: unknown): value is {
@@ -122,12 +146,45 @@ function fromDatabaseRecord(record: {
   };
 }
 
+function isCatalogMachine(value: unknown): value is CatalogMachine {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "number" &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "model" in value &&
+    (typeof value.model === "string" || value.model === null) &&
+    "specifications" in value &&
+    (typeof value.specifications === "string" || value.specifications === null) &&
+    "status" in value &&
+    typeof value.status === "string" &&
+    machineStatuses.some((status) => status === value.status) &&
+    "notes" in value &&
+    (typeof value.notes === "string" || value.notes === null) &&
+    "created_at" in value &&
+    typeof value.created_at === "string" &&
+    "updated_at" in value &&
+    typeof value.updated_at === "string"
+  );
+}
+
 function getIcon(name: string) {
   return iconOptions.find((option) => option.name === name)?.Icon ?? CircleHelp;
 }
 
+function formatMachineStatus(status: MachineStatus) {
+  const label = status.replace("_", " ");
+  return label.charAt(0).toLocaleUpperCase() + label.slice(1);
+}
+
 export default function StaffCatalogPage() {
   const [items, setItems] = useState<CatalogItem[]>([]);
+  const [machines, setMachines] = useState<CatalogMachine[]>([]);
+  const [catalogType, setCatalogType] = useState<"apparatus" | "machines">(
+    "apparatus",
+  );
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<ApparatusCategory | "All Types">(
     "All Types",
@@ -140,6 +197,17 @@ export default function StaffCatalogPage() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [machineError, setMachineError] = useState("");
+  const [machineFormError, setMachineFormError] = useState("");
+  const [machinesLoading, setMachinesLoading] = useState(true);
+  const [machineSaving, setMachineSaving] = useState(false);
+  const [machineProcessingId, setMachineProcessingId] = useState<number | null>(
+    null,
+  );
+  const [editingMachineId, setEditingMachineId] = useState<number | null>(null);
+  const [isMachineWindowOpen, setIsMachineWindowOpen] = useState(false);
+  const [machineForm, setMachineForm] = useState<MachineForm>(emptyMachineForm);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -178,10 +246,52 @@ export default function StaffCatalogPage() {
       }
     }
 
+    async function loadMachines() {
+      try {
+        const response = await fetch("/api/admin/machines", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            result &&
+              typeof result === "object" &&
+              "error" in result &&
+              typeof result.error === "string"
+              ? result.error
+              : "Unable to load machines from the database.",
+          );
+        }
+        if (!Array.isArray(result) || !result.every(isCatalogMachine)) {
+          throw new Error("The machine API returned data in an unexpected format.");
+        }
+        setMachines(result);
+        setMachineError("");
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        console.error("Unable to load catalog machines:", loadError);
+        setMachineError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load machines from the database.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setMachinesLoading(false);
+      }
+    }
+
     void loadApparatus();
-    const interval = window.setInterval(() => void loadApparatus(), 15_000);
+    void loadMachines();
+    const interval = window.setInterval(() => {
+      void loadApparatus();
+      void loadMachines();
+    }, 15_000);
     const refresh = () => {
-      if (document.visibilityState === "visible") void loadApparatus();
+      if (document.visibilityState === "visible") {
+        void loadApparatus();
+        void loadMachines();
+      }
     };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
@@ -213,6 +323,21 @@ export default function StaffCatalogPage() {
     [items],
   );
 
+  const filteredMachines = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return machines.filter((machine) => {
+      if (!showArchived && machine.status === "archived") return false;
+      return (
+        !query ||
+        machine.name.toLocaleLowerCase().includes(query) ||
+        (machine.model ?? "").toLocaleLowerCase().includes(query) ||
+        (machine.specifications ?? "").toLocaleLowerCase().includes(query) ||
+        (machine.notes ?? "").toLocaleLowerCase().includes(query) ||
+        machine.status.replace("_", " ").toLocaleLowerCase().includes(query)
+      );
+    });
+  }, [machines, search, showArchived]);
+
   function openAddWindow() {
     setEditingId(null);
     setIsWindowOpen(true);
@@ -237,6 +362,36 @@ export default function StaffCatalogPage() {
     });
     setError("");
     setNotice("");
+  }
+
+  function openAddMachineWindow() {
+    setEditingMachineId(null);
+    setIsMachineWindowOpen(true);
+    setMachineForm(emptyMachineForm);
+    setMachineFormError("");
+    setMachineError("");
+    setNotice("");
+  }
+
+  function openEditMachineWindow(machine: CatalogMachine) {
+    setEditingMachineId(machine.id);
+    setIsMachineWindowOpen(true);
+    setMachineForm({
+      name: machine.name,
+      model: machine.model ?? "",
+      specifications: machine.specifications ?? "",
+      status: machine.status,
+      notes: machine.notes ?? "",
+    });
+    setMachineFormError("");
+    setMachineError("");
+    setNotice("");
+  }
+
+  function closeMachineWindow() {
+    setIsMachineWindowOpen(false);
+    setEditingMachineId(null);
+    setMachineFormError("");
   }
 
   function closeWindow() {
@@ -369,58 +524,210 @@ export default function StaffCatalogPage() {
     }
   }
 
+  async function saveMachine(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = machineForm.name.trim();
+    if (!name) {
+      setMachineFormError("Enter a machine name.");
+      return;
+    }
+
+    setMachineSaving(true);
+    setMachineFormError("");
+    setMachineError("");
+    setNotice("");
+    try {
+      const response = await fetch(
+        editingMachineId
+          ? `/api/admin/machines/${editingMachineId}`
+          : "/api/admin/machines",
+        {
+          method: editingMachineId ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            model: machineForm.model.trim() || null,
+            specifications: machineForm.specifications.trim() || null,
+            status: machineForm.status,
+            notes: machineForm.notes.trim() || null,
+          }),
+        },
+      );
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          result &&
+            typeof result === "object" &&
+            "error" in result &&
+            typeof result.error === "string"
+            ? result.error
+            : "Unable to save machine.",
+        );
+      }
+      if (!isCatalogMachine(result)) {
+        throw new Error("The machine API returned data in an unexpected format.");
+      }
+
+      setMachines((current) =>
+        editingMachineId
+          ? current.map((machine) =>
+              machine.id === editingMachineId ? result : machine,
+            )
+          : [...current, result],
+      );
+      setNotice(editingMachineId ? "Machine updated." : "Machine added.");
+      closeMachineWindow();
+    } catch (saveError) {
+      console.error("Unable to save catalog machine:", saveError);
+      setMachineFormError(
+        saveError instanceof Error ? saveError.message : "Unable to save machine.",
+      );
+    } finally {
+      setMachineSaving(false);
+    }
+  }
+
+  async function toggleMachineArchive(machine: CatalogMachine) {
+    const nextStatus: MachineStatus =
+      machine.status === "archived" ? "available" : "archived";
+    setMachineProcessingId(machine.id);
+    setMachineError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/machines/${machine.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          result &&
+            typeof result === "object" &&
+            "error" in result &&
+            typeof result.error === "string"
+            ? result.error
+            : "Unable to update machine status.",
+        );
+      }
+      if (!isCatalogMachine(result)) {
+        throw new Error("The machine API returned data in an unexpected format.");
+      }
+      setMachines((current) =>
+        current.map((currentMachine) =>
+          currentMachine.id === machine.id ? result : currentMachine,
+        ),
+      );
+      setNotice(
+        `${machine.name} ${nextStatus === "archived" ? "archived" : "restored"}.`,
+      );
+    } catch (statusError) {
+      console.error("Unable to update machine status:", statusError);
+      setMachineError(
+        statusError instanceof Error
+          ? statusError.message
+          : "Unable to update machine status.",
+      );
+    } finally {
+      setMachineProcessingId(null);
+    }
+  }
+
   return (
     <StaffShell>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink">Manage apparatus</h1>
+        <h1 className="text-xl font-semibold text-ink">Manage catalog</h1>
         <button
           className="min-h-10 rounded-md bg-maroon px-4 py-2 text-sm font-semibold text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          onClick={openAddWindow}
+          onClick={
+            catalogType === "apparatus"
+              ? openAddWindow
+              : openAddMachineWindow
+          }
           type="button"
         >
-          Add Apparatus
+          Add {catalogType === "apparatus" ? "Apparatus" : "Machine"}
         </button>
+      </div>
+
+      <div
+        aria-label="Catalog item type"
+        className="mb-4 flex flex-wrap gap-2"
+        role="group"
+      >
+        {(["apparatus", "machines"] as const).map((type) => (
+          <button
+            aria-pressed={catalogType === type}
+            className={
+              catalogType === type
+                ? "min-h-10 rounded-md bg-maroon px-4 py-2 text-sm font-semibold text-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                : "min-h-10 rounded-md border border-ink/30 bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            }
+            key={type}
+            onClick={() => {
+              setCatalogType(type);
+              setSearch("");
+            }}
+            type="button"
+          >
+            {type === "apparatus" ? "Apparatus" : "Machines"}
+          </button>
+        ))}
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="block w-full max-w-sm">
-          <span className="sr-only">Search apparatus</span>
+          <span className="sr-only">
+            Search {catalogType === "apparatus" ? "apparatus" : "machines"}
+          </span>
           <input
             className="min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search apparatus"
+            placeholder={`Search ${catalogType === "apparatus" ? "apparatus" : "machines"}`}
             type="search"
             value={search}
           />
         </label>
-        <label className="block w-full max-w-xs">
-          <span className="sr-only">Filter by apparatus type</span>
-          <select
-            className="min-h-10 w-full rounded-md border border-maroon/40 bg-surface px-3 py-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            onChange={(event) => {
-              const value = event.target.value;
-              const category = itemCategories.find(
-                (itemCategory) => itemCategory === value,
-              );
-              setSelectedCategory(
-                value === "All Types" ? "All Types" : category ?? "All Types",
-              );
-            }}
-            value={selectedCategory}
-          >
-            <option value="All Types">All Types</option>
-            {itemCategories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
+        {catalogType === "apparatus" ? (
+          <label className="block w-full max-w-xs">
+            <span className="sr-only">Filter by apparatus type</span>
+            <select
+              className="min-h-10 w-full rounded-md border border-maroon/40 bg-surface px-3 py-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              onChange={(event) => {
+                const value = event.target.value;
+                const category = itemCategories.find(
+                  (itemCategory) => itemCategory === value,
+                );
+                setSelectedCategory(
+                  value === "All Types" ? "All Types" : category ?? "All Types",
+                );
+              }}
+              value={selectedCategory}
+            >
+              <option value="All Types">All Types</option>
+              {itemCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="flex min-h-10 items-center gap-2 rounded-md border border-maroon/40 bg-surface px-3 py-2 text-sm font-medium text-ink">
+            <input
+              checked={showArchived}
+              className="size-4 accent-maroon focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              onChange={(event) => setShowArchived(event.target.checked)}
+              type="checkbox"
+            />
+            Show archived
+          </label>
+        )}
       </div>
 
-      {error && (
+      {(catalogType === "apparatus" ? error : machineError) && (
         <p className="mb-3 rounded bg-alert px-3 py-2 text-sm text-alert-text" role="alert">
-          {error}
+          {catalogType === "apparatus" ? error : machineError}
         </p>
       )}
       {notice && (
@@ -429,6 +736,7 @@ export default function StaffCatalogPage() {
         </p>
       )}
 
+      {catalogType === "apparatus" ? (
       <div className="overflow-x-auto rounded-lg border border-ink/30 border-t-[3px] border-t-accent bg-surface">
         <table className="w-full min-w-[760px] border-collapse text-left text-sm text-ink">
           <thead className="bg-page">
@@ -515,6 +823,105 @@ export default function StaffCatalogPage() {
           </tbody>
         </table>
       </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-ink/30 border-t-[3px] border-t-gold bg-surface">
+          <table className="w-full min-w-[680px] border-collapse text-left text-sm text-ink">
+            <thead className="bg-page">
+              <tr>
+                <th className="px-3 py-3 font-semibold" scope="col">Machine</th>
+                <th className="px-3 py-3 font-semibold" scope="col">Model and specifications</th>
+                <th className="px-3 py-3 font-semibold" scope="col">Status</th>
+                <th className="px-3 py-3 font-semibold" scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {machinesLoading ? (
+                <tr>
+                  <td className="px-3 py-8 text-center text-ink/70" colSpan={4}>
+                    Loading machines from the database...
+                  </td>
+                </tr>
+              ) : filteredMachines.map((machine) => {
+                const archived = machine.status === "archived";
+                return (
+                  <tr
+                    className={`border-t border-ink/15 ${
+                      archived ? "bg-page text-ink/60" : ""
+                    }`}
+                    key={machine.id}
+                  >
+                    <td className="px-3 py-3 align-top font-semibold">
+                      {machine.name}
+                      {machine.notes && (
+                        <p className="mt-1 max-w-xs text-xs font-normal text-ink/70">
+                          {machine.notes}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      {machine.model && <p>Model: {machine.model}</p>}
+                      {machine.specifications && (
+                        <p className="mt-1 max-w-lg whitespace-pre-wrap text-ink/80">
+                          {machine.specifications}
+                        </p>
+                      )}
+                      {!machine.model && !machine.specifications && (
+                        <span className="text-ink/60">No model or specifications</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span
+                        className={
+                          machine.status === "available"
+                            ? "rounded-full bg-success/10 px-2 py-1 text-xs font-semibold text-success"
+                            : archived
+                              ? "rounded-full bg-ink/10 px-2 py-1 text-xs font-semibold text-ink/70"
+                              : "rounded-full bg-accent/20 px-2 py-1 text-xs font-semibold text-ink"
+                        }
+                      >
+                        {formatMachineStatus(machine.status)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="min-h-9 rounded-md border border-ink/40 bg-surface px-3 py-1 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                          disabled={machineProcessingId === machine.id}
+                          onClick={() => openEditMachineWindow(machine)}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="min-h-9 rounded-md border border-maroon/50 bg-surface px-3 py-1 text-sm font-semibold text-maroon hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={machineProcessingId === machine.id}
+                          onClick={() => void toggleMachineArchive(machine)}
+                          type="button"
+                        >
+                          {machineProcessingId === machine.id
+                            ? "Saving..."
+                            : archived
+                              ? "Restore"
+                              : "Archive"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!machinesLoading && filteredMachines.length === 0 && (
+                <tr>
+                  <td className="px-3 py-8 text-center text-ink/70" colSpan={4}>
+                    {showArchived
+                      ? "No machines match your search."
+                      : "No active machines match your search."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {isWindowOpen ? (
         <div
@@ -670,6 +1077,136 @@ export default function StaffCatalogPage() {
                   : editingId
                     ? "Save Changes"
                     : "Add Apparatus"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {isMachineWindowOpen ? (
+        <div
+          aria-labelledby="machine-window-heading"
+          aria-modal="true"
+          className="fixed inset-0 z-30 flex items-center justify-center bg-charcoal/60 p-4"
+          role="dialog"
+        >
+          <form
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-ink/20 border-t-[3px] border-t-gold bg-surface p-5"
+            onSubmit={saveMachine}
+          >
+            <h2
+              className="mb-4 text-lg font-semibold text-ink"
+              id="machine-window-heading"
+            >
+              {editingMachineId !== null ? "Edit Machine" : "Add Machine"}
+            </h2>
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-ink">
+                Name
+                <input
+                  autoFocus
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  maxLength={100}
+                  onChange={(event) =>
+                    setMachineForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  required
+                  value={machineForm.name}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Model
+                <input
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  maxLength={120}
+                  onChange={(event) =>
+                    setMachineForm((current) => ({
+                      ...current,
+                      model: event.target.value,
+                    }))
+                  }
+                  value={machineForm.model}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Specifications
+                <textarea
+                  className="mt-1 min-h-24 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  maxLength={5000}
+                  onChange={(event) =>
+                    setMachineForm((current) => ({
+                      ...current,
+                      specifications: event.target.value,
+                    }))
+                  }
+                  value={machineForm.specifications}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Status
+                <select
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  onChange={(event) => {
+                    const status = machineStatuses.find(
+                      (option) => option === event.target.value,
+                    );
+                    if (status) {
+                      setMachineForm((current) => ({ ...current, status }));
+                    }
+                  }}
+                  value={machineForm.status}
+                >
+                  {machineStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {formatMachineStatus(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Notes
+                <textarea
+                  className="mt-1 min-h-20 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  maxLength={5000}
+                  onChange={(event) =>
+                    setMachineForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  value={machineForm.notes}
+                />
+              </label>
+            </div>
+            {machineFormError && (
+              <p
+                className="mt-4 rounded bg-alert px-3 py-2 text-sm text-alert-text"
+                role="alert"
+              >
+                {machineFormError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="min-h-10 rounded-md border border-ink/40 bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                disabled={machineSaving}
+                onClick={closeMachineWindow}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="min-h-10 rounded-md bg-maroon px-4 py-2 text-sm font-semibold text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={machineSaving}
+                type="submit"
+              >
+                {machineSaving
+                  ? "Saving..."
+                  : editingMachineId !== null
+                    ? "Save Changes"
+                    : "Add Machine"}
               </button>
             </div>
           </form>

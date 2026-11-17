@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import TopBar from "@/components/navigation/TopBar";
-import { mockMachines } from "@/lib/mockMachines";
 import type { Machine } from "@/types/reservation";
 
 type Reservation = {
@@ -108,6 +107,17 @@ function isCancellationRequestUpdate(
   );
 }
 
+function isMachine(value: unknown): value is Machine {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "name" in value &&
+    typeof value.name === "string"
+  );
+}
+
 async function getErrorMessage(response: Response, fallback: string) {
   const result: unknown = await response.json();
   return result &&
@@ -139,7 +149,8 @@ export default function ReservePage() {
     return end;
   }, [weekStart]);
 
-  const [selectedMachine, setSelectedMachine] = useState<Machine>(mockMachines[0]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
   const [selectedReservation, setSelectedReservation] =
@@ -151,10 +162,70 @@ export default function ReservePage() {
     CancellationRequestUpdate[]
   >([]);
   const [cancellationRequestsError, setCancellationRequestsError] = useState("");
+  const [machinesLoading, setMachinesLoading] = useState(true);
+  const [machinesError, setMachinesError] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let firstLoad = true;
+
+    async function loadMachines() {
+      try {
+        const response = await fetch("/api/machines", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(
+            await getErrorMessage(response, "Unable to load available machines."),
+          );
+        }
+        const result: unknown = await response.json();
+        if (!Array.isArray(result) || !result.every(isMachine)) {
+          throw new Error("The machines API returned data in an unexpected format.");
+        }
+        setMachines(result);
+        setSelectedMachine((current) =>
+          (current && result.find((machine) => machine.id === current.id)) ??
+          result[0] ??
+          null,
+        );
+        if (result.length === 0) setLoading(false);
+        setMachinesError("");
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        console.error("Unable to load available machines.", loadError);
+        setMachinesError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load available machines.",
+        );
+      } finally {
+        if (firstLoad) {
+          firstLoad = false;
+          setMachinesLoading(false);
+        }
+      }
+    }
+
+    void loadMachines();
+    const interval = window.setInterval(() => void loadMachines(), 15_000);
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadMachines();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -223,6 +294,8 @@ export default function ReservePage() {
   }, [studentId]);
 
   useEffect(() => {
+    if (!selectedMachine) return;
+    const machine = selectedMachine;
     let activeController: AbortController | null = null;
     let hasLoaded = false;
 
@@ -235,7 +308,7 @@ export default function ReservePage() {
 
       try {
         const query = new URLSearchParams({
-          machine: selectedMachine.name,
+          machine: machine.name,
           start: weekStart.toISOString(),
           end: weekEnd.toISOString(),
         });
@@ -324,7 +397,7 @@ export default function ReservePage() {
   }
 
   async function requestReservationCancellation() {
-    if (!selectedReservation || !studentId) {
+    if (!selectedReservation || !studentId || !selectedMachine) {
       setError("Student information is unavailable. Please sign in again.");
       return;
     }
@@ -388,7 +461,7 @@ export default function ReservePage() {
   }
 
   async function confirmReservation() {
-    if (!selectedSlot) return;
+    if (!selectedSlot || !selectedMachine) return;
     if (!studentId.trim()) {
       setError("Student information is unavailable. Please sign in again.");
       return;
@@ -523,12 +596,27 @@ export default function ReservePage() {
           >
             Machine selector
           </h2>
+          {machinesLoading && (
+            <p className="text-sm text-ink/70" role="status">
+              Loading available machines…
+            </p>
+          )}
+          {machinesError && (
+            <p className="mb-2 rounded bg-alert px-3 py-2 text-sm text-alert-text" role="alert">
+              {machinesError}
+            </p>
+          )}
+          {!machinesLoading && machines.length === 0 && !machinesError && (
+            <p className="rounded border border-ink/20 bg-surface p-3 text-sm text-ink/70">
+              No machines are currently available to reserve.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2" role="tablist">
-            {mockMachines.map((machine) => (
+            {machines.map((machine) => (
               <button
-                aria-selected={selectedMachine.id === machine.id}
+                aria-selected={selectedMachine?.id === machine.id}
                 className={
-                  selectedMachine.id === machine.id
+                  selectedMachine?.id === machine.id
                     ? "rounded-md bg-maroon px-3 py-1.5 text-sm font-semibold text-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                     : "rounded-md border border-ink/40 bg-surface px-3 py-1.5 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 }
@@ -549,6 +637,7 @@ export default function ReservePage() {
           </div>
         </section>
 
+        {selectedMachine && (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]">
           <section aria-labelledby="week-view-heading">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
@@ -819,6 +908,7 @@ export default function ReservePage() {
             )}
           </aside>
         </div>
+        )}
       </main>
     </>
   );
