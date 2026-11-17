@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 import type {
   BorrowingHistoryItem,
   StudentBorrowingHistory,
@@ -256,6 +257,12 @@ export async function POST(request: Request) {
       );
     }
 
+    await addStudentNotification(client, {
+      studentId: studentId.trim(),
+      eventType: "Return",
+      message: `Your return of ${selectedRows.length} equipment item${selectedRows.length === 1 ? "" : "s"} was recorded.`,
+      href: "/catalog",
+    });
     await client.query("COMMIT");
     transactionStarted = false;
     return NextResponse.json({

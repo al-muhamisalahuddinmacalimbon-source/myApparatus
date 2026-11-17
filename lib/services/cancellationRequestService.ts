@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -106,6 +107,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         `${reservation.machine_name} cancellation requested for ${reservation.start_time.toISOString()}.`,
       ],
     );
+    await addStudentNotification(client, {
+      studentId: studentId.trim(),
+      eventType: "Cancellation Request",
+      message: `Your cancellation request for ${reservation.machine_name} on ${reservation.start_time.toLocaleString()} was submitted for staff review.`,
+      href: "/reserve",
+    });
     await client.query("COMMIT");
     transactionStarted = false;
 

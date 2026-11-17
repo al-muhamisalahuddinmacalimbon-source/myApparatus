@@ -53,6 +53,7 @@ export default function StaffNotificationsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
     async function loadNotifications() {
       try {
         const response = await fetch("/api/admin/notifications", {
@@ -75,7 +76,7 @@ export default function StaffNotificationsPage() {
         setNotifications(result.notifications);
         setError("");
       } catch (loadError) {
-        if (controller.signal.aborted) return;
+        if (!active || controller.signal.aborted) return;
         console.error("Unable to load staff notifications:", loadError);
         setError(
           loadError instanceof Error
@@ -83,12 +84,20 @@ export default function StaffNotificationsPage() {
             : "Unable to load notifications.",
         );
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (active && !controller.signal.aborted) setLoading(false);
       }
     }
 
     void loadNotifications();
-    return () => controller.abort();
+    const refresh = () => void loadNotifications();
+    const interval = window.setInterval(refresh, 15_000);
+    window.addEventListener("staff-notifications-updated", refresh);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("staff-notifications-updated", refresh);
+    };
   }, []);
 
   async function markAllAsRead() {
@@ -110,6 +119,7 @@ export default function StaffNotificationsPage() {
         current.map((item) => ({ ...item, read_at: item.read_at ?? readAt })),
       );
       setNotice("All notifications marked as read.");
+      window.dispatchEvent(new Event("staff-notifications-updated"));
     } catch (markError) {
       console.error("Unable to mark notifications as read:", markError);
       setError(

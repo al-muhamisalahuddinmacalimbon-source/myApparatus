@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -20,8 +21,12 @@ export async function POST(_request: Request, { params }: RouteContext) {
     await client.query("BEGIN");
     transactionStarted = true;
 
-    const loanResult = await client.query(
-      "SELECT id, status FROM loans WHERE id = $1 FOR UPDATE",
+    const loanResult = await client.query<{
+      id: number;
+      student_id: string;
+      status: string;
+    }>(
+      "SELECT id, student_id, status FROM loans WHERE id = $1 FOR UPDATE",
       [Number(id)],
     );
 
@@ -90,6 +95,12 @@ export async function POST(_request: Request, { params }: RouteContext) {
        WHERE id = $1`,
       [Number(id)],
     );
+    await addStudentNotification(client, {
+      studentId: loanResult.rows[0].student_id,
+      eventType: "Return",
+      message: "Your borrowed equipment was marked as returned by staff.",
+      href: "/catalog",
+    });
     await client.query("COMMIT");
     transactionStarted = false;
 

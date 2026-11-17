@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import NotificationBell, {
+  type NotificationBellItem,
+} from "@/components/navigation/NotificationBell";
 import {
   useEffect,
   useState,
@@ -112,8 +115,8 @@ export default function StaffShell({ children }: StaffShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [notifications, setNotifications] = useState<StaffNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notificationError, setNotificationError] = useState("");
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
   const staffName = useSyncExternalStore(
     subscribeToStaffChanges,
     getStoredStaffName,
@@ -183,14 +186,21 @@ export default function StaffShell({ children }: StaffShellProps) {
             ? loadError.message
             : "Unable to load staff notifications.",
         );
+      } finally {
+        if (active) setNotificationsLoading(false);
       }
     }
 
     void loadNotifications();
-    const interval = window.setInterval(() => void loadNotifications(), 15_000);
+    const refresh = () => void loadNotifications();
+    const interval = window.setInterval(refresh, 15_000);
+    window.addEventListener("staff-notifications-updated", refresh);
+    window.addEventListener("focus", refresh);
     return () => {
       active = false;
       window.clearInterval(interval);
+      window.removeEventListener("staff-notifications-updated", refresh);
+      window.removeEventListener("focus", refresh);
     };
   }, []);
 
@@ -209,7 +219,18 @@ export default function StaffShell({ children }: StaffShellProps) {
             : item,
         ),
       );
-      setUnreadCount((count) => Math.max(0, count - 1));
+      setUnreadCount((count) =>
+        Math.max(
+          0,
+          count -
+            (notifications.some(
+              (item) => item.id === notificationId && item.read_at === null,
+            )
+              ? 1
+              : 0),
+        ),
+      );
+      window.dispatchEvent(new Event("staff-notifications-updated"));
     } catch (readError) {
       console.error("Unable to mark staff notification as read:", readError);
       setNotificationError(
@@ -220,19 +241,68 @@ export default function StaffShell({ children }: StaffShellProps) {
     }
   }
 
+  async function markAllNotificationsRead() {
+    try {
+      const response = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          result &&
+            typeof result === "object" &&
+            "error" in result &&
+            typeof result.error === "string"
+            ? result.error
+            : "Unable to mark notifications as read.",
+        );
+      }
+      const readAt = new Date().toISOString();
+      setNotifications((current) =>
+        current.map((item) => ({ ...item, read_at: item.read_at ?? readAt })),
+      );
+      setUnreadCount(0);
+      setNotificationError("");
+      window.dispatchEvent(new Event("staff-notifications-updated"));
+    } catch (readError) {
+      console.error("Unable to mark staff notifications as read:", readError);
+      setNotificationError(
+        readError instanceof Error
+          ? readError.message
+          : "Unable to mark notifications as read.",
+      );
+    }
+  }
+
   function logOut() {
     localStorage.removeItem("staff");
     router.push("/");
   }
 
+  const bellNotifications: NotificationBellItem[] = notifications.map(
+    (notification) => ({
+      id: notification.id,
+      title: `${notification.event_type} · ${notification.student_name} (${notification.student_id})`,
+      message: notification.message,
+      createdAt: notification.created_at,
+      href:
+        notification.event_type === "Borrow"
+          ? "/staff/returns"
+          : "/staff/reservations",
+      read: notification.read_at !== null,
+    }),
+  );
+
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex h-14 items-center justify-between bg-maroon px-4 text-surface sm:px-6">
+      <header className="relative z-50 flex h-14 items-center justify-between bg-maroon px-4 text-surface sm:px-6">
         <div className="flex items-center gap-3">
           <button
             aria-expanded={isSidebarOpen}
             aria-label={isSidebarOpen ? "Close staff sidebar" : "Open staff sidebar"}
-            className="flex size-8 items-center justify-center rounded hover:bg-surface/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="flex size-11 items-center justify-center rounded hover:bg-surface/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             onClick={() => setIsSidebarOpen((open) => !open)}
             type="button"
           >
@@ -247,74 +317,15 @@ export default function StaffShell({ children }: StaffShellProps) {
           </Link>
         </div>
         <div className="flex items-center gap-4 text-sm">
-          <div className="relative">
-            <button
-              aria-expanded={isNotificationsOpen}
-              aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
-              className="relative flex size-9 items-center justify-center rounded hover:bg-surface/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              onClick={() => setIsNotificationsOpen((open) => !open)}
-              type="button"
-            >
-              <Bell aria-hidden="true" className="size-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-alert px-1 text-center text-xs font-bold text-alert-text">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </button>
-            {isNotificationsOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-ink/30 border-t-[3px] border-t-accent bg-surface p-3 text-ink shadow-lg">
-                <div className="mb-2 flex items-center justify-between">
-                  <h2 className="font-semibold">Notifications</h2>
-                  <Link
-                    className="text-sm text-link hover:underline"
-                    href="/staff/notifications"
-                    onClick={() => setIsNotificationsOpen(false)}
-                  >
-                    View all
-                  </Link>
-                </div>
-                {notificationError ? (
-                  <p className="rounded bg-alert p-2 text-sm text-alert-text">
-                    {notificationError}
-                  </p>
-                ) : notifications.length === 0 ? (
-                  <p className="p-2 text-sm">No notifications.</p>
-                ) : (
-                  <ul className="max-h-80 space-y-1 overflow-y-auto">
-                    {notifications.slice(0, 5).map((notification) => (
-                      <li key={notification.id}>
-                        <Link
-                          className={`block rounded p-2 text-sm hover:bg-page ${
-                            notification.read_at ? "" : "bg-page font-semibold"
-                          }`}
-                          href={
-                            notification.event_type === "Cancellation Request"
-                              ? "/staff/reservations"
-                              : notification.event_type === "Reservation"
-                                ? "/staff/reservations"
-                                : "/staff/dashboard"
-                          }
-                          onClick={() => {
-                            if (!notification.read_at) {
-                              void markNotificationRead(notification.id);
-                            }
-                            setIsNotificationsOpen(false);
-                          }}
-                        >
-                          <span className="block text-xs text-ink/70">
-                            {notification.event_type} · {notification.student_name} (
-                            {notification.student_id})
-                          </span>
-                          {notification.message}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
+          <NotificationBell
+            error={notificationError}
+            loading={notificationsLoading}
+            notifications={bellNotifications}
+            onMarkAllRead={() => void markAllNotificationsRead()}
+            onMarkRead={(id) => void markNotificationRead(id)}
+            unreadCount={unreadCount}
+            viewAllHref="/staff/notifications"
+          />
           <span>{staffName}</span>
           <button
             className="hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"

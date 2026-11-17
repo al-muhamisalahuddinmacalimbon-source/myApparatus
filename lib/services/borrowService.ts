@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 
 type BorrowItem = {
   id: number;
@@ -149,6 +150,14 @@ export async function POST(request: Request) {
           .join(", ")}.`,
       ],
     );
+    await addStudentNotification(client, {
+      studentId: studentId.trim(),
+      eventType: "Borrow",
+      message: `Your borrowing request was submitted for ${borrowedItems
+        .map((item) => `${item.quantity} × ${item.name}`)
+        .join(", ")}.`,
+      href: "/catalog",
+    });
 
     await client.query("COMMIT");
     transactionStarted = false;

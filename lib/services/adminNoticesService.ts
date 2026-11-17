@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 import { noticeCategories } from "@/types/notice";
 import type { NoticeCategory } from "@/types/notice";
 
@@ -61,20 +63,47 @@ export async function POST(request: Request) {
     );
   }
 
+  let client: PoolClient | undefined;
+  let transactionStarted = false;
   try {
-    const result = await pool.query(
+    client = await pool.connect();
+    await client.query("BEGIN");
+    transactionStarted = true;
+    const result = await client.query(
       `INSERT INTO lab_notices (title, category, body, pinned)
        VALUES ($1, $2, $3, $4)
        RETURNING id, title, category, body, pinned, created_at`,
       [body.title.trim(), body.category, body.body.trim(), body.pinned],
     );
+    const studentsResult = await client.query<{ student_id: string }>(
+      "SELECT student_id FROM students",
+    );
+    for (const student of studentsResult.rows) {
+      await addStudentNotification(client, {
+        studentId: student.student_id,
+        eventType: "Lab Notice",
+        message: `New lab notice: ${body.title.trim()}`,
+        href: `/notices/${result.rows[0].id}`,
+      });
+    }
+    await client.query("COMMIT");
+    transactionStarted = false;
     return NextResponse.json(result.rows[0], { status: 201 });
   } catch (error) {
+    if (transactionStarted && client) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error("Lab Notice Creation Rollback Error:", rollbackError);
+      }
+    }
     console.error("Unable to publish lab notice:", error);
     return NextResponse.json(
       { error: "Unable to publish the lab notice." },
       { status: 500 },
     );
+  } finally {
+    client?.release();
   }
 }
 
