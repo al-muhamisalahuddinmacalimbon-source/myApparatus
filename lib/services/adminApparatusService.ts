@@ -111,7 +111,8 @@ export async function POST(request: Request) {
       `INSERT INTO apparatus
          (name, category, total_stock, available_stock, status, icon)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, name, category, total_stock, available_stock, status, icon`,
+       RETURNING id, name, category, total_stock, available_stock, status, icon,
+         '[]'::json AS variants`,
       [
         body.name.trim(),
         body.category,

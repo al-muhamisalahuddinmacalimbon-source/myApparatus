@@ -467,7 +467,7 @@ export default function StaffDashboardPage() {
         <BorrowerSlip
           dueAt={new Date(selectedLoan.dueAt)}
           items={selectedLoan.items.map((item, index) => ({
-            id: index,
+            key: `loan-item:${index}`,
             name: item.name,
             quantity: item.quantity,
           }))}

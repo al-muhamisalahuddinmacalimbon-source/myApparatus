@@ -18,15 +18,16 @@ import { useState, useEffect, useCallback } from "react";
 import TopBar from "@/components/navigation/TopBar";
 import CartDrawer, { type CartItem } from "@/components/ui/CartDrawer";
 import BorrowerSlip from "@/components/ui/BorrowerSlip";
+import {
+  findVariantAlias,
+  isApparatusRecord,
+  isApparatusVariant,
+  withoutVariantAliases,
+  type ApparatusRecord,
+  type ApparatusVariant,
+} from "@/types/apparatus";
 
-interface Apparatus {
-  id: number;
-  name: string;
-  category: string;
-  available_stock: number;
-  total_stock: number;
-  status: string;
-}
+type Apparatus = ApparatusRecord;
 
 const apparatusIcons = [
   FlaskConical,
@@ -50,32 +51,20 @@ const categories = [
   "Safety",
 ] as const;
 
-function isApparatus(value: unknown): value is Apparatus {
-  if (!value || typeof value !== "object") return false;
-  return (
-    "id" in value &&
-    typeof value.id === "number" &&
-    Number.isInteger(value.id) &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "category" in value &&
-    typeof value.category === "string" &&
-    "available_stock" in value &&
-    typeof value.available_stock === "number" &&
-    "total_stock" in value &&
-    typeof value.total_stock === "number" &&
-    "status" in value &&
-    typeof value.status === "string"
-  );
-}
+type BorrowedItemResponse = {
+  id: number;
+  variant_id: number | null;
+  name: string;
+  quantity: number;
+};
 
-function isBorrowedItem(
-  value: unknown,
-): value is { id: number; name: string; quantity: number } {
+function isBorrowedItem(value: unknown): value is BorrowedItemResponse {
   if (!value || typeof value !== "object") return false;
   return (
     "id" in value &&
     typeof value.id === "number" &&
+    "variant_id" in value &&
+    (typeof value.variant_id === "number" || value.variant_id === null) &&
     "name" in value &&
     typeof value.name === "string" &&
     "quantity" in value &&
@@ -85,13 +74,13 @@ function isBorrowedItem(
 
 function isBorrowedItems(
   value: unknown,
-): value is Array<{ id: number; name: string; quantity: number }> {
+): value is BorrowedItemResponse[] {
   return Array.isArray(value) && value.every(isBorrowedItem);
 }
 
 type BorrowResponse = {
   loan_id: number;
-  items: Array<{ id: number; name: string; quantity: number }>;
+  items: BorrowedItemResponse[];
   borrowed_at: string;
   due_at: string;
   remarks: string | null;
@@ -116,6 +105,34 @@ function isBorrowResponse(value: unknown): value is BorrowResponse {
 function isCartItem(value: unknown): value is CartItem {
   if (!value || typeof value !== "object") return false;
   return (
+    "key" in value &&
+    typeof value.key === "string" &&
+    "apparatusId" in value &&
+    typeof value.apparatusId === "number" &&
+    "variantId" in value &&
+    (typeof value.variantId === "number" || value.variantId === null) &&
+    "parentName" in value &&
+    typeof value.parentName === "string" &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "quantity" in value &&
+    typeof value.quantity === "number" &&
+    Number.isInteger(value.quantity) &&
+    value.quantity > 0 &&
+    "availableStock" in value &&
+    typeof value.availableStock === "number" &&
+    value.quantity <= value.availableStock &&
+    "variants" in value &&
+    Array.isArray(value.variants) &&
+    value.variants.every(isApparatusVariant)
+  );
+}
+
+function isLegacyCartItem(
+  value: unknown,
+): value is { id: number; name: string; quantity: number; availableStock: number } {
+  if (!value || typeof value !== "object") return false;
+  return (
     "id" in value &&
     typeof value.id === "number" &&
     "name" in value &&
@@ -132,17 +149,50 @@ function isCartItem(value: unknown): value is CartItem {
 
 function reconcileCart(cart: CartItem[], inventory: Apparatus[]) {
   return cart.flatMap((item) => {
-    const currentApparatus = inventory.find(
-      (apparatus) => apparatus.id === item.id,
+    let currentApparatus = inventory.find(
+      (apparatus) => apparatus.id === item.apparatusId,
     );
     if (!currentApparatus) return [item];
-    if (currentApparatus.available_stock <= 0) return [];
+
+    let variant =
+      item.variantId === null
+        ? undefined
+        : currentApparatus.variants.find(
+            (candidate) => candidate.id === item.variantId,
+          );
+    const alias = findVariantAlias(currentApparatus, inventory);
+    if (alias) {
+      currentApparatus = alias.parent;
+      variant = alias.variant;
+    } else if (currentApparatus.variants.length > 0 && !variant) {
+      variant = currentApparatus.variants.find(
+        (candidate) => candidate.status === "Active",
+      );
+    }
+
+    const availableStock = variant?.available_stock ??
+      currentApparatus.available_stock;
+    if (
+      availableStock <= 0 ||
+      variant?.status === "Inactive" ||
+      currentApparatus.status === "Inactive"
+    ) {
+      return [];
+    }
 
     return [
       {
         ...item,
-        availableStock: currentApparatus.available_stock,
-        quantity: Math.min(item.quantity, currentApparatus.available_stock),
+        key: variant ? `variant:${variant.id}` : `apparatus:${currentApparatus.id}`,
+        apparatusId: currentApparatus.id,
+        variantId: variant?.id ?? null,
+        parentName: currentApparatus.name,
+        name: variant
+          ? `${currentApparatus.name} (${variant.name})`
+          : currentApparatus.name,
+        availableStock,
+        variants: currentApparatus.variants,
+        quantity: Math.min(item.quantity, availableStock),
       },
     ];
   });
@@ -166,6 +216,9 @@ export default function CatalogPage() {
   } | null>(null);
   const [student, setStudent] = useState({ id: "", name: "" });
   const [apparatusList, setApparatusList] = useState<Apparatus[]>([]);
+  const [selectedVariantIds, setSelectedVariantIds] = useState<
+    Record<number, number>
+  >({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -176,6 +229,19 @@ export default function CatalogPage() {
           const parsed: unknown = JSON.parse(savedCart);
           if (Array.isArray(parsed) && parsed.every(isCartItem)) {
             setCart(parsed);
+          } else if (Array.isArray(parsed) && parsed.every(isLegacyCartItem)) {
+            setCart(
+              parsed.map((item) => ({
+                key: `apparatus:${item.id}`,
+                apparatusId: item.id,
+                variantId: null,
+                parentName: item.name,
+                name: item.name,
+                quantity: item.quantity,
+                availableStock: item.availableStock,
+                variants: [],
+              })),
+            );
           } else {
             console.error("Saved cart data has an invalid format.");
             localStorage.removeItem("myApparatusCart");
@@ -247,13 +313,13 @@ export default function CatalogPage() {
             : "Unable to load equipment from the database.";
         throw new Error(message);
       }
-      if (!Array.isArray(data) || !data.every(isApparatus)) {
+      if (!Array.isArray(data) || !data.every(isApparatusRecord)) {
         throw new Error("The equipment API returned data in an unexpected format.");
       }
       const apparatusOnly = data.filter(
         (apparatus) => apparatus.category !== "Machines",
       );
-      setApparatusList(apparatusOnly);
+      setApparatusList(withoutVariantAliases(apparatusOnly));
       setCart((currentCart) => reconcileCart(currentCart, apparatusOnly));
       setCatalogError("");
     } catch (error) {
@@ -353,46 +419,74 @@ export default function CatalogPage() {
 
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
+  function selectedVariantFor(apparatus: Apparatus) {
+    return (
+      apparatus.variants.find(
+        (variant) => variant.id === selectedVariantIds[apparatus.id],
+      ) ??
+      apparatus.variants.find((variant) => variant.status === "Active") ??
+      apparatus.variants[0]
+    );
+  }
+
   function updateSearch(value: string) {
     setLoading(true);
     setSearch(value);
   }
 
-  function addToCart(apparatus: Apparatus) {
-    const existingItem = cart.find((item) => item.id === apparatus.id);
-    if (existingItem && existingItem.quantity >= apparatus.available_stock) {
-      setCartNotice(`Maximum available quantity for ${apparatus.name} is already in your cart.`);
+  function addToCart(apparatus: Apparatus, variant?: ApparatusVariant) {
+    const key = variant ? `variant:${variant.id}` : `apparatus:${apparatus.id}`;
+    const availableStock = variant?.available_stock ?? apparatus.available_stock;
+    const name = variant
+      ? `${apparatus.name} (${variant.name})`
+      : apparatus.name;
+    const existingItem = cart.find((item) => item.key === key);
+    if (
+      apparatus.status !== "Active" ||
+      variant?.status === "Inactive" ||
+      availableStock <= 0
+    ) {
+      setCartNotice(`${name} is currently unavailable.`);
+      return;
+    }
+    if (existingItem && existingItem.quantity >= availableStock) {
+      setCartNotice(`Maximum available quantity for ${name} is already in your cart.`);
       return;
     }
 
     setCart(
       existingItem
         ? cart.map((item) =>
-            item.id === apparatus.id
+            item.key === key
               ? {
                   ...item,
                   quantity: item.quantity + 1,
-                  availableStock: apparatus.available_stock,
+                  availableStock,
+                  variants: apparatus.variants,
                 }
               : item,
           )
         : [
             ...cart,
             {
-          id: apparatus.id,
-          name: apparatus.name,
-          quantity: 1,
-          availableStock: apparatus.available_stock,
+              key,
+              apparatusId: apparatus.id,
+              variantId: variant?.id ?? null,
+              parentName: apparatus.name,
+              name,
+              quantity: 1,
+              availableStock,
+              variants: apparatus.variants,
             },
           ],
     );
-    setCartNotice(`${apparatus.name} added to cart.`);
+    setCartNotice(`${name} added to cart.`);
   }
 
-  function updateQuantity(itemId: number, change: -1 | 1) {
+  function updateQuantity(itemKey: string, change: -1 | 1) {
     setCart((currentCart) =>
       currentCart.map((item) => {
-        if (item.id !== itemId) return item;
+        if (item.key !== itemKey) return item;
         return {
           ...item,
           quantity: Math.min(item.availableStock, item.quantity + change),
@@ -401,8 +495,57 @@ export default function CatalogPage() {
     );
   }
 
-  function removeFromCart(itemId: number) {
-    setCart((currentCart) => currentCart.filter((item) => item.id !== itemId));
+  function removeFromCart(itemKey: string) {
+    setCart((currentCart) => currentCart.filter((item) => item.key !== itemKey));
+  }
+
+  function changeCartVariant(itemKey: string, variantId: number) {
+    const item = cart.find((candidate) => candidate.key === itemKey);
+    const apparatus = item
+      ? apparatusList.find((candidate) => candidate.id === item.apparatusId)
+      : undefined;
+    const targetVariant = apparatus?.variants.find(
+      (variant) => variant.id === variantId,
+    );
+    if (!item || !apparatus || !targetVariant) return;
+    if (targetVariant.status !== "Active" || targetVariant.available_stock <= 0) {
+      setCartNotice(`${targetVariant.name} is currently unavailable.`);
+      return;
+    }
+
+    const targetKey = `variant:${targetVariant.id}`;
+    const existingTarget = cart.find(
+      (candidate) => candidate.key === targetKey,
+    );
+    const combinedQuantity =
+      item.quantity + (existingTarget?.quantity ?? 0);
+    const quantity = Math.min(combinedQuantity, targetVariant.available_stock);
+    setCart((currentCart) => [
+      ...currentCart.filter(
+        (candidate) =>
+          candidate.key !== itemKey && candidate.key !== targetKey,
+      ),
+      {
+        ...item,
+        key: targetKey,
+        apparatusId: apparatus.id,
+        variantId: targetVariant.id,
+        parentName: apparatus.name,
+        name: `${apparatus.name} (${targetVariant.name})`,
+        quantity,
+        availableStock: targetVariant.available_stock,
+        variants: apparatus.variants,
+      },
+    ]);
+    setSelectedVariantIds((current) => ({
+      ...current,
+      [apparatus.id]: targetVariant.id,
+    }));
+    if (quantity < combinedQuantity) {
+      setCartNotice(
+        `Quantity adjusted to this variant's ${targetVariant.available_stock} available units.`,
+      );
+    }
   }
 
   async function submitBorrowerSlip() {
@@ -419,7 +562,11 @@ export default function CatalogPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: student.id,
-          items: cart.map(({ id, quantity }) => ({ id, quantity })),
+          items: cart.map((item) =>
+            item.variantId === null
+              ? { id: item.apparatusId, quantity: item.quantity }
+              : { variant_id: item.variantId, quantity: item.quantity },
+          ),
           due_days: 3,
         }),
       });
@@ -442,30 +589,58 @@ export default function CatalogPage() {
       }
 
       setSubmittedSlip({
-        items: result.items.map((item) => ({
-          ...item,
-          availableStock:
-            cart.find((cartItem) => cartItem.id === item.id)?.availableStock ??
-            item.quantity,
-        })),
+        items: result.items.map((item) => {
+          const cartItem = cart.find(
+            (candidate) =>
+              candidate.apparatusId === item.id &&
+              candidate.variantId === item.variant_id,
+          );
+          return {
+            key: cartItem?.key ?? `borrowed:${item.id}:${item.variant_id ?? "parent"}`,
+            apparatusId: item.id,
+            variantId: item.variant_id,
+            parentName: cartItem?.parentName ?? item.name,
+            name: item.name,
+            quantity: item.quantity,
+            availableStock: cartItem?.availableStock ?? item.quantity,
+            variants: cartItem?.variants ?? [],
+          };
+        }),
         submittedAt: new Date(result.borrowed_at),
         dueAt: new Date(result.due_at),
         remarks: result.remarks,
       });
       setApparatusList((currentList) =>
         currentList.map((apparatus) => {
-          const borrowedItem = result.items.find(
-            (item) => item.id === apparatus.id,
-          );
-          return borrowedItem
-            ? {
-                ...apparatus,
+          let updated = apparatus;
+          for (const borrowedItem of result.items) {
+            if (borrowedItem.id !== apparatus.id) continue;
+            if (borrowedItem.variant_id === null) {
+              updated = {
+                ...updated,
                 available_stock: Math.max(
                   0,
-                  apparatus.available_stock - borrowedItem.quantity,
+                  updated.available_stock - borrowedItem.quantity,
                 ),
-              }
-            : apparatus;
+              };
+            } else {
+              updated = {
+                ...updated,
+                variants: updated.variants.map((variant) =>
+                  variant.id === borrowedItem.variant_id
+                    ? {
+                        ...variant,
+                        available_stock: Math.max(
+                          0,
+                          variant.available_stock - borrowedItem.quantity,
+                        ),
+                      }
+                    : variant,
+                ),
+              };
+            }
+          }
+          return updated;
         }),
       );
       setIsCartOpen(false);
@@ -549,15 +724,30 @@ export default function CatalogPage() {
           ) : (
             apparatusList.map((apparatus, index) => {
               const Icon = apparatusIcons[index % apparatusIcons.length];
+              const selectedVariant = selectedVariantFor(apparatus);
+              const stockOwner =
+                apparatus.variants.length > 0
+                  ? selectedVariant
+                  : undefined;
+              const totalStock =
+                stockOwner?.total_stock ?? apparatus.total_stock;
+              const availableStock =
+                stockOwner?.available_stock ?? apparatus.available_stock;
+              const itemKey = stockOwner
+                ? `variant:${stockOwner.id}`
+                : `apparatus:${apparatus.id}`;
               const quantityInCart =
                 submittedSlip
                   ? 0
-                  : cart.find((item) => item.id === apparatus.id)?.quantity ?? 0;
+                  : cart.find((item) => item.key === itemKey)?.quantity ?? 0;
               const availableToAdd = Math.max(
                 0,
-                apparatus.available_stock - quantityInCart,
+                availableStock - quantityInCart,
               );
-              const isInStock = availableToAdd > 0;
+              const isInStock =
+                availableToAdd > 0 &&
+                apparatus.status === "Active" &&
+                stockOwner?.status !== "Inactive";
 
               return (
                 <article
@@ -569,15 +759,41 @@ export default function CatalogPage() {
                   </div>
                   <h2 className="font-semibold text-ink">{apparatus.name}</h2>
                   <p className="text-sm text-link">{apparatus.category}</p>
+                  {apparatus.variants.length > 0 && (
+                    <label className="mt-2 block text-sm font-medium text-ink">
+                      Size / material
+                      <select
+                        className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                        onChange={(event) =>
+                          setSelectedVariantIds((current) => ({
+                            ...current,
+                            [apparatus.id]: Number(event.target.value),
+                          }))
+                        }
+                        value={selectedVariant?.id ?? ""}
+                      >
+                        {apparatus.variants.map((variant) => (
+                          <option
+                            disabled={variant.status !== "Active"}
+                            key={variant.id}
+                            value={variant.id}
+                          >
+                            {variant.name}
+                            {variant.status !== "Active" ? " (Inactive)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <div className="mb-2 mt-1 flex items-center justify-between gap-2 text-sm">
-                    <span className="text-ink">Total stock: {apparatus.total_stock}</span>
+                    <span className="text-ink">In Stock: {totalStock}</span>
                     <span className="rounded bg-success px-2 py-0.5 text-xs font-semibold text-surface">
-                      {apparatus.status}
+                      {stockOwner?.status ?? apparatus.status}
                     </span>
                   </div>
                   <div className="mb-2 flex items-center justify-between gap-2 text-sm">
                     <span className="text-ink">
-                      Available: {apparatus.available_stock}
+                      Available: {availableStock}
                     </span>
                     {quantityInCart > 0 && (
                       <span className="text-ink/70">In cart: {quantityInCart}</span>
@@ -590,7 +806,7 @@ export default function CatalogPage() {
                         : "w-full cursor-not-allowed rounded border border-ink/30 bg-page px-3 py-1.5 text-sm font-semibold text-ink/60"
                     }
                     disabled={!isInStock}
-                    onClick={() => addToCart(apparatus)}
+                    onClick={() => addToCart(apparatus, stockOwner)}
                     type="button"
                   >
                     {isInStock ? "Add to Cart" : "Out of Stock"}
@@ -616,6 +832,7 @@ export default function CatalogPage() {
         onDecrease={(itemId) => updateQuantity(itemId, -1)}
         onIncrease={(itemId) => updateQuantity(itemId, 1)}
         onRemove={removeFromCart}
+        onVariantChange={changeCartVariant}
         onSubmit={submitBorrowerSlip}
       />
       {submittedSlip && (

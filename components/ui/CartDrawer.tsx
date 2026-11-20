@@ -1,12 +1,17 @@
 "use client";
 
 import { Minus, Plus, X } from "lucide-react";
+import type { ApparatusVariant } from "@/types/apparatus";
 
 export type CartItem = {
-  id: number;
+  key: string;
+  apparatusId: number;
+  variantId: number | null;
+  parentName: string;
   name: string;
   quantity: number;
   availableStock: number;
+  variants: ApparatusVariant[];
 };
 
 type CartDrawerProps = {
@@ -15,9 +20,10 @@ type CartDrawerProps = {
   isOpen: boolean;
   isSubmitting: boolean;
   onClose: () => void;
-  onDecrease: (itemId: number) => void;
-  onIncrease: (itemId: number) => void;
-  onRemove: (itemId: number) => void;
+  onDecrease: (itemKey: string) => void;
+  onIncrease: (itemKey: string) => void;
+  onRemove: (itemKey: string) => void;
+  onVariantChange: (itemKey: string, variantId: number) => void;
   onSubmit: () => void;
 };
 
@@ -30,6 +36,7 @@ export default function CartDrawer({
   onDecrease,
   onIncrease,
   onRemove,
+  onVariantChange,
   onSubmit,
 }: CartDrawerProps) {
   const itemCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -78,14 +85,54 @@ export default function CartDrawer({
           ) : (
             <ul className="space-y-4">
               {cart.map((item) => (
-                <li className="border-b border-ink/20 pb-4 last:border-b-0" key={item.id}>
+                <li className="border-b border-ink/20 pb-4 last:border-b-0" key={item.key}>
                   <p className="mb-2 font-semibold text-ink">{item.name}</p>
+                  {item.variants.length > 0 && (
+                    <label className="mb-2 block text-sm font-medium text-ink">
+                      Size / material
+                      <select
+                        className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                        onChange={(event) =>
+                          onVariantChange(item.key, Number(event.target.value))
+                        }
+                        value={item.variantId ?? ""}
+                      >
+                        {item.variants.map((variant) => (
+                          <option
+                            disabled={
+                              variant.status !== "Active" ||
+                              variant.available_stock <= 0
+                            }
+                            key={variant.id}
+                            value={variant.id}
+                          >
+                            {variant.name}
+                            {variant.status !== "Active" ? " (Inactive)" : ""}
+                            {variant.available_stock <= 0 ? " (Out of stock)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {item.variants.find(
+                        (variant) => variant.id === item.variantId,
+                      ) && (
+                        <span className="mt-1 block text-xs font-normal text-ink/70">
+                          In Stock:{" "}
+                          {
+                            item.variants.find(
+                              (variant) => variant.id === item.variantId,
+                            )?.total_stock
+                          }{" "}
+                          · Available: {item.availableStock}
+                        </span>
+                      )}
+                    </label>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       aria-label={`Decrease ${item.name} quantity`}
                       className="flex size-8 items-center justify-center rounded border border-ink/30 text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
                       disabled={item.quantity <= 1}
-                      onClick={() => onDecrease(item.id)}
+                      onClick={() => onDecrease(item.key)}
                       type="button"
                     >
                       <Minus aria-hidden="true" className="size-4" />
@@ -97,14 +144,14 @@ export default function CartDrawer({
                       aria-label={`Increase ${item.name} quantity`}
                       className="flex size-8 items-center justify-center rounded border border-ink/30 text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
                       disabled={item.quantity >= item.availableStock}
-                      onClick={() => onIncrease(item.id)}
+                      onClick={() => onIncrease(item.key)}
                       type="button"
                     >
                       <Plus aria-hidden="true" className="size-4" />
                     </button>
                     <button
                       className="ml-auto rounded border border-ink/30 px-3 py-1.5 text-sm font-semibold text-link hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                      onClick={() => onRemove(item.id)}
+                      onClick={() => onRemove(item.key)}
                       type="button"
                     >
                       Remove

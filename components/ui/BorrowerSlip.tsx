@@ -4,7 +4,7 @@ import Modal from "@/components/ui/Modal";
 import type { CartItem } from "./CartDrawer";
 
 type BorrowerSlipProps = {
-  items: Array<Pick<CartItem, "id" | "name" | "quantity">>;
+  items: Array<Pick<CartItem, "key" | "name" | "quantity">>;
   onClose: () => void;
   studentId: string;
   studentName: string;
@@ -81,7 +81,7 @@ export default function BorrowerSlip({
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.key}>
                   <td className="border border-ink/30 px-2 py-2 text-ink">{item.name}</td>
                   <td className="border border-ink/30 px-2 py-2 text-right text-ink">
                     {item.quantity}

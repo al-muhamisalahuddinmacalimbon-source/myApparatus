@@ -20,6 +20,13 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import StaffShell from "@/components/navigation/StaffShell";
 import type { CatalogMachine, MachineStatus } from "@/types/machine";
 import type { ApparatusCategory } from "@/types/reservation";
+import {
+  isApparatusRecord,
+  isApparatusVariant,
+  withoutVariantAliases,
+  type ApparatusRecord,
+  type ApparatusVariant,
+} from "@/types/apparatus";
 
 type CatalogItem = {
   id: number;
@@ -29,6 +36,7 @@ type CatalogItem = {
   availableStock: number;
   status: "Active" | "Inactive";
   icon: string;
+  variants: ApparatusVariant[];
 };
 
 type ApparatusForm = {
@@ -46,6 +54,13 @@ type MachineForm = {
   specifications: string;
   status: MachineStatus;
   notes: string;
+};
+
+type VariantForm = {
+  name: string;
+  totalStock: string;
+  availableStock: string;
+  status: "Active" | "Inactive";
 };
 
 const categories: ApparatusCategory[] = [
@@ -96,45 +111,18 @@ const emptyMachineForm: MachineForm = {
   notes: "",
 };
 
-function isApparatusRecord(value: unknown): value is {
-  id: number;
-  name: string;
-  category: ApparatusCategory;
-  total_stock: number;
-  available_stock: number;
-  status: "Active" | "Inactive";
-  icon: string;
-} {
+function isStaffApparatusRecord(
+  value: unknown,
+): value is ApparatusRecord & { category: ApparatusCategory } {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "number" &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "category" in value &&
-    typeof value.category === "string" &&
-    categories.some((category) => category === value.category) &&
-    "total_stock" in value &&
-    typeof value.total_stock === "number" &&
-    "available_stock" in value &&
-    typeof value.available_stock === "number" &&
-    "status" in value &&
-    (value.status === "Active" || value.status === "Inactive") &&
-    "icon" in value &&
-    typeof value.icon === "string"
+    isApparatusRecord(value) &&
+    categories.some((category) => category === value.category)
   );
 }
 
-function fromDatabaseRecord(record: {
-  id: number;
-  name: string;
-  category: ApparatusCategory;
-  total_stock: number;
-  available_stock: number;
-  status: "Active" | "Inactive";
-  icon: string;
-}): CatalogItem {
+function fromDatabaseRecord(
+  record: ApparatusRecord & { category: ApparatusCategory },
+): CatalogItem {
   return {
     id: record.id,
     name: record.name,
@@ -143,6 +131,7 @@ function fromDatabaseRecord(record: {
     availableStock: record.available_stock,
     status: record.status,
     icon: record.icon,
+    variants: record.variants,
   };
 }
 
@@ -190,6 +179,21 @@ export default function StaffCatalogPage() {
     "All Types",
   );
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingVariant, setEditingVariant] = useState<{
+    apparatusId: number;
+    variantId: number;
+  } | null>(null);
+  const [selectedVariantIds, setSelectedVariantIds] = useState<
+    Record<number, number>
+  >({});
+  const [variantForm, setVariantForm] = useState<VariantForm>({
+    name: "",
+    totalStock: "",
+    availableStock: "",
+    status: "Active",
+  });
+  const [variantSaving, setVariantSaving] = useState(false);
+  const [variantError, setVariantError] = useState("");
   const [isWindowOpen, setIsWindowOpen] = useState(false);
   const [form, setForm] = useState<ApparatusForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -228,10 +232,11 @@ export default function StaffCatalogPage() {
               : "Unable to load apparatus from the database.",
           );
         }
-        if (!Array.isArray(result) || !result.every(isApparatusRecord)) {
+        if (!Array.isArray(result) || !result.every(isStaffApparatusRecord)) {
           throw new Error("The apparatus API returned data in an unexpected format.");
         }
-        setItems(result.map(fromDatabaseRecord));
+        const records = result.filter(isStaffApparatusRecord);
+        setItems(withoutVariantAliases(records).map(fromDatabaseRecord));
         setError("");
       } catch (loadError) {
         if (controller.signal.aborted) return;
@@ -312,7 +317,10 @@ export default function StaffCatalogPage() {
         const matchesSearch =
           !query ||
           item.name.toLocaleLowerCase().includes(query) ||
-          item.category.toLocaleLowerCase().includes(query);
+          item.category.toLocaleLowerCase().includes(query) ||
+          item.variants.some((variant) =>
+            variant.name.toLocaleLowerCase().includes(query),
+          );
         return matchesCategory && matchesSearch;
       },
     );
@@ -362,6 +370,129 @@ export default function StaffCatalogPage() {
     });
     setError("");
     setNotice("");
+  }
+
+  function selectedVariantFor(item: CatalogItem) {
+    return (
+      item.variants.find(
+        (variant) => variant.id === selectedVariantIds[item.id],
+      ) ?? item.variants[0]
+    );
+  }
+
+  function openEditVariantWindow(
+    item: CatalogItem,
+    variant: ApparatusVariant,
+  ) {
+    setSelectedVariantIds((current) => ({
+      ...current,
+      [item.id]: variant.id,
+    }));
+    setEditingVariant({ apparatusId: item.id, variantId: variant.id });
+    setVariantForm({
+      name: variant.name,
+      totalStock: String(variant.total_stock),
+      availableStock: String(variant.available_stock),
+      status: variant.status,
+    });
+    setVariantError("");
+    setError("");
+    setNotice("");
+  }
+
+  function selectEditVariant(item: CatalogItem, variantId: number) {
+    const variant = item.variants.find((candidate) => candidate.id === variantId);
+    if (!variant) return;
+    setEditingVariant({ apparatusId: item.id, variantId });
+    setVariantForm({
+      name: variant.name,
+      totalStock: String(variant.total_stock),
+      availableStock: String(variant.available_stock),
+      status: variant.status,
+    });
+    setVariantError("");
+  }
+
+  async function saveVariant(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingVariant) return;
+
+    const name = variantForm.name.trim();
+    const totalStock = Number(variantForm.totalStock);
+    const availableStock = Number(variantForm.availableStock);
+    if (
+      !name ||
+      !Number.isInteger(totalStock) ||
+      totalStock < 0 ||
+      !Number.isInteger(availableStock) ||
+      availableStock < 0 ||
+      availableStock > totalStock
+    ) {
+      setVariantError(
+        "Enter a variant name and valid stock counts. Available stock cannot exceed total stock.",
+      );
+      return;
+    }
+
+    setVariantSaving(true);
+    setVariantError("");
+    try {
+      const response = await fetch(
+        `/api/admin/apparatus/${editingVariant.apparatusId}/variants/${editingVariant.variantId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            total_stock: totalStock,
+            available_stock: availableStock,
+            status: variantForm.status,
+          }),
+        },
+      );
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          result &&
+            typeof result === "object" &&
+            "error" in result &&
+            typeof result.error === "string"
+            ? result.error
+            : "Unable to update apparatus variant.",
+        );
+      }
+      if (!isApparatusVariant(result)) {
+        throw new Error("The apparatus variant API returned unexpected data.");
+      }
+
+      setItems((current) =>
+        current.map((item) =>
+          item.id === result.apparatus_id
+            ? {
+                ...item,
+                variants: item.variants.map((variant) =>
+                  variant.id === result.id ? result : variant,
+                ),
+              }
+            : item,
+        ),
+      );
+      setSelectedVariantIds((current) => ({
+        ...current,
+        [result.apparatus_id]: result.id,
+      }));
+      setNotice("Apparatus variant updated.");
+      setEditingVariant(null);
+    } catch (saveError) {
+      console.error("Unable to update apparatus variant:", saveError);
+      setVariantError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to update apparatus variant.",
+      );
+    } finally {
+      setVariantSaving(false);
+    }
   }
 
   function openAddMachineWindow() {
@@ -449,7 +580,7 @@ export default function StaffCatalogPage() {
             : "Unable to save apparatus.",
         );
       }
-      if (!isApparatusRecord(result)) {
+      if (!isStaffApparatusRecord(result)) {
         throw new Error("The apparatus API returned data in an unexpected format.");
       }
       const savedItem = fromDatabaseRecord(result);
@@ -500,7 +631,7 @@ export default function StaffCatalogPage() {
             : "Unable to update apparatus status.",
         );
       }
-      if (!isApparatusRecord(result)) {
+      if (!isStaffApparatusRecord(result)) {
         throw new Error("The apparatus API returned data in an unexpected format.");
       }
       const savedItem = fromDatabaseRecord(result);
@@ -633,6 +764,16 @@ export default function StaffCatalogPage() {
     }
   }
 
+  const variantEditParent = editingVariant
+    ? items.find((item) => item.id === editingVariant.apparatusId)
+    : undefined;
+  const editingApparatus = editingId
+    ? items.find((item) => item.id === editingId)
+    : undefined;
+  const variantEditSelection = variantEditParent?.variants.find(
+    (variant) => variant.id === editingVariant?.variantId,
+  );
+
   return (
     <StaffShell>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -759,6 +900,7 @@ export default function StaffCatalogPage() {
             ) : filteredItems.map((item) => {
               const Icon = getIcon(item.icon);
               const inactive = item.status === "Inactive";
+              const selectedVariant = selectedVariantFor(item);
               return (
                 <tr
                   className={`border-t border-ink/15 ${
@@ -770,11 +912,37 @@ export default function StaffCatalogPage() {
                     <span className="flex items-center gap-2">
                       <Icon aria-hidden="true" className="size-4 shrink-0" />
                       {item.name}
+                      {selectedVariant && (
+                        <label className="mt-2 block max-w-xs text-xs font-medium">
+                          Size / material
+                          <select
+                            className="mt-1 min-h-9 w-full rounded-md border border-ink/40 bg-surface px-2 py-1 text-sm font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                            onChange={(event) =>
+                              setSelectedVariantIds((current) => ({
+                                ...current,
+                                [item.id]: Number(event.target.value),
+                              }))
+                            }
+                            value={selectedVariant.id}
+                          >
+                            {item.variants.map((variant) => (
+                              <option key={variant.id} value={variant.id}>
+                                {variant.name}
+                                {variant.status === "Inactive" ? " (Inactive)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                     </span>
                   </td>
                   <td className="px-3 py-3">{item.category}</td>
-                  <td className="px-3 py-3">{item.totalStock}</td>
-                  <td className="px-3 py-3">{item.availableStock}</td>
+                  <td className="px-3 py-3">
+                    {selectedVariant?.total_stock ?? item.totalStock}
+                  </td>
+                  <td className="px-3 py-3">
+                    {selectedVariant?.available_stock ?? item.availableStock}
+                  </td>
                   <td className="px-3 py-3">
                     <span
                       className={
@@ -794,8 +962,20 @@ export default function StaffCatalogPage() {
                         onClick={() => openEditWindow(item)}
                         type="button"
                       >
-                        Edit
+                        {item.variants.length > 0 ? "Edit apparatus" : "Edit"}
                       </button>
+                      {selectedVariant && (
+                        <button
+                          className="min-h-9 rounded-md border border-ink/40 bg-surface px-3 py-1 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                          disabled={processingId === item.id}
+                          onClick={() =>
+                            openEditVariantWindow(item, selectedVariant)
+                          }
+                          type="button"
+                        >
+                          Edit variant
+                        </button>
+                      )}
                       <button
                         className="min-h-9 rounded-md border border-ink/40 bg-surface px-3 py-1 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={processingId === item.id}
@@ -975,39 +1155,48 @@ export default function StaffCatalogPage() {
                   ))}
                 </select>
               </label>
-              <label className="block text-sm font-medium text-ink">
-                Total stock
-                <input
-                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                  min="0"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      totalStock: event.target.value,
-                    }))
-                  }
-                  required
-                  type="number"
-                  value={form.totalStock}
-                />
-              </label>
-              <label className="block text-sm font-medium text-ink">
-                Available stock
-                <input
-                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                  max={form.totalStock || undefined}
-                  min="0"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      availableStock: event.target.value,
-                    }))
-                  }
-                  required
-                  type="number"
-                  value={form.availableStock}
-                />
-              </label>
+              {editingApparatus?.variants.length ? (
+                <p className="rounded border border-ink/20 bg-page p-3 text-sm text-ink">
+                  Stock is managed independently for each size or material. Use
+                  the variant editor to change these counts.
+                </p>
+              ) : (
+                <>
+                  <label className="block text-sm font-medium text-ink">
+                    Total stock
+                    <input
+                      className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      min="0"
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          totalStock: event.target.value,
+                        }))
+                      }
+                      required
+                      type="number"
+                      value={form.totalStock}
+                    />
+                  </label>
+                  <label className="block text-sm font-medium text-ink">
+                    Available stock
+                    <input
+                      className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      max={form.totalStock || undefined}
+                      min="0"
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          availableStock: event.target.value,
+                        }))
+                      }
+                      required
+                      type="number"
+                      value={form.availableStock}
+                    />
+                  </label>
+                </>
+              )}
               {editingId !== null && (
                 <label className="block text-sm font-medium text-ink">
                   Status
@@ -1077,6 +1266,141 @@ export default function StaffCatalogPage() {
                   : editingId
                     ? "Save Changes"
                     : "Add Apparatus"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {editingVariant && variantEditParent && variantEditSelection ? (
+        <div
+          aria-labelledby="variant-window-heading"
+          aria-modal="true"
+          className="fixed inset-0 z-30 flex items-center justify-center bg-charcoal/60 p-4"
+          role="dialog"
+        >
+          <form
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-ink/20 border-t-[3px] border-t-accent bg-surface p-5"
+            onSubmit={saveVariant}
+          >
+            <h2
+              className="mb-1 text-lg font-semibold text-ink"
+              id="variant-window-heading"
+            >
+              Edit {variantEditParent.name} variant
+            </h2>
+            <p className="mb-4 text-sm text-ink/70">
+              Stock counts apply only to the selected size or material.
+            </p>
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-ink">
+                Size / material
+                <select
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  onChange={(event) =>
+                    selectEditVariant(
+                      variantEditParent,
+                      Number(event.target.value),
+                    )
+                  }
+                  value={editingVariant.variantId}
+                >
+                  {variantEditParent.variants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>
+                      {variant.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Variant name
+                <input
+                  autoFocus
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  maxLength={120}
+                  onChange={(event) =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  required
+                  value={variantForm.name}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                In stock
+                <input
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  min="0"
+                  onChange={(event) =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      totalStock: event.target.value,
+                    }))
+                  }
+                  required
+                  type="number"
+                  value={variantForm.totalStock}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Available
+                <input
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  max={variantForm.totalStock || undefined}
+                  min="0"
+                  onChange={(event) =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      availableStock: event.target.value,
+                    }))
+                  }
+                  required
+                  type="number"
+                  value={variantForm.availableStock}
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                Status
+                <select
+                  className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  onChange={(event) =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      status:
+                        event.target.value === "Inactive" ? "Inactive" : "Active",
+                    }))
+                  }
+                  value={variantForm.status}
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </label>
+            </div>
+            {variantError && (
+              <p
+                className="mt-4 rounded bg-alert px-3 py-2 text-sm text-alert-text"
+                role="alert"
+              >
+                {variantError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="min-h-10 rounded-md border border-ink/40 bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-page focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                disabled={variantSaving}
+                onClick={() => setEditingVariant(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="min-h-10 rounded-md bg-maroon px-4 py-2 text-sm font-semibold text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+                disabled={variantSaving}
+                type="submit"
+              >
+                {variantSaving ? "Saving..." : "Save variant"}
               </button>
             </div>
           </form>

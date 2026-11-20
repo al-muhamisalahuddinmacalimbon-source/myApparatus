@@ -99,14 +99,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Apparatus was not found." }, { status: 404 });
     }
 
-    const variantsResult = await client.query<{ count: number }>(
+    const variantCountResult = await client.query<{ count: number }>(
       `SELECT COUNT(*)::integer AS count
        FROM apparatus_variants
        WHERE apparatus_id = $1`,
       [Number(id)],
     );
     if (
-      variantsResult.rows[0].count > 0 &&
+      variantCountResult.rows[0].count > 0 &&
       (body.total_stock !== currentResult.rows[0].total_stock ||
         body.available_stock !== currentResult.rows[0].available_stock)
     ) {
@@ -161,9 +161,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       ],
     );
 
+    const variantsResult = await client.query(
+      `SELECT id, apparatus_id, name, total_stock, available_stock, status
+       FROM apparatus_variants
+       WHERE apparatus_id = $1
+       ORDER BY id`,
+      [Number(id)],
+    );
+
     await client.query("COMMIT");
     transactionStarted = false;
-    return NextResponse.json(result.rows[0]);
+    return NextResponse.json({
+      ...result.rows[0],
+      variants: variantsResult.rows,
+    });
   } catch (error) {
     if (transactionStarted && client) {
       try {

@@ -67,6 +67,11 @@ send `PATCH /api/admin/active-loans/[id]` with
 is restored and the selected variant stock is decremented in the same
 transaction. The variant must belong to the same parent apparatus.
 
+Staff can edit one variant through
+`PATCH /api/admin/apparatus/[id]/variants/[variantId]` with `name`,
+`total_stock`, `available_stock`, and `status`. The API rejects stock changes
+that would put available stock plus active loans above that variant's total.
+
 ## Error format
 
 Every error returns JSON in this shape:
