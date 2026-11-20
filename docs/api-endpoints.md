@@ -44,6 +44,29 @@ psql -U postgres -d myapparatus -f database/migrations/004_add_loan_remarks.sql
 
 Send `PATCH /api/admin/active-loans/[id]` with `{ "remarks": "Brand new beaker issued" }`. Send `{ "remarks": null }` (or an empty string) to clear the remark. Only active loans can be updated. No seed changes are needed because the new column is nullable.
 
+## Apparatus variants
+
+Apply `database/migrations/007_add_apparatus_variants.sql`, then
+`database/seeds/005_apparatus_variants_seed.sql`. Catalog endpoints return each
+parent apparatus with a `variants` array; every variant has its own `id`,
+`total_stock`, and `available_stock`.
+The existing reservation endpoints book shared machines only and do not alter
+apparatus inventory.
+
+`POST /api/borrow/submit` accepts either a legacy parent `id` or a variant ID:
+
+```json
+{ "student_id": "2023-0001", "items": [{ "variant_id": 1, "quantity": 2 }] }
+```
+
+Variant borrowing stores `loan_items.variant_id` and decrements only that
+variant's available stock. Existing active-loan return endpoints restore stock
+to the stored variant. To switch an unreturned loan item to another variant,
+send `PATCH /api/admin/active-loans/[id]` with
+`{ "items": [{ "loan_item_id": 1, "variant_id": 2 }] }`; the old variant stock
+is restored and the selected variant stock is decremented in the same
+transaction. The variant must belong to the same parent apparatus.
+
 ## Error format
 
 Every error returns JSON in this shape:

@@ -41,7 +41,10 @@ export async function GET(request: Request) {
          l.returned_at AS "returnedAt",
          l.status AS "loanStatus",
          li.id AS "loanItemId",
-         a.name,
+         CASE
+           WHEN v.id IS NULL THEN a.name
+           ELSE a.name || ' (' || v.name || ')'
+         END AS name,
          li.quantity::integer AS quantity,
          li.returned_quantity::integer AS "returnedQuantity",
          (li.quantity - li.returned_quantity)::integer AS "activeQuantity",
@@ -51,6 +54,7 @@ export async function GET(request: Request) {
          ON l.student_id = s.student_id
        LEFT JOIN loan_items li ON li.loan_id = l.id
        LEFT JOIN apparatus a ON a.id = li.apparatus_id
+       LEFT JOIN apparatus_variants v ON v.id = li.variant_id
        WHERE s.student_id = $1
        ORDER BY l.borrowed_at DESC NULLS LAST, li.id`,
       [studentId],
@@ -183,6 +187,7 @@ export async function POST(request: Request) {
       loan_id: number;
       loan_item_id: number;
       apparatus_id: number;
+      variant_id: number | null;
       quantity: number;
       returned_quantity: number;
     }>(
@@ -190,6 +195,7 @@ export async function POST(request: Request) {
          l.id AS loan_id,
          li.id AS loan_item_id,
          li.apparatus_id,
+         li.variant_id,
          li.quantity,
          li.returned_quantity
        FROM loans l
@@ -221,13 +227,21 @@ export async function POST(request: Request) {
     }
 
     const stockByApparatus = new Map<number, number>();
+    const stockByVariant = new Map<number, number>();
     const affectedLoanIds = new Set<number>();
     for (const row of selectedRows) {
       const remainingQuantity = row.quantity - row.returned_quantity;
-      stockByApparatus.set(
-        row.apparatus_id,
-        (stockByApparatus.get(row.apparatus_id) ?? 0) + remainingQuantity,
-      );
+      if (row.variant_id !== null) {
+        stockByVariant.set(
+          row.variant_id,
+          (stockByVariant.get(row.variant_id) ?? 0) + remainingQuantity,
+        );
+      } else {
+        stockByApparatus.set(
+          row.apparatus_id,
+          (stockByApparatus.get(row.apparatus_id) ?? 0) + remainingQuantity,
+        );
+      }
       affectedLoanIds.add(row.loan_id);
       await client.query(
         "UPDATE loan_items SET returned_quantity = quantity WHERE id = $1",
@@ -240,6 +254,18 @@ export async function POST(request: Request) {
         "UPDATE apparatus SET available_stock = available_stock + $1 WHERE id = $2",
         [quantity, apparatusId],
       );
+    }
+    for (const [variantId, quantity] of stockByVariant) {
+      const result = await client.query(
+        `UPDATE apparatus_variants
+         SET available_stock = available_stock + $1
+         WHERE id = $2
+         RETURNING id`,
+        [quantity, variantId],
+      );
+      if (result.rows.length === 0) {
+        throw new Error(`Apparatus variant ${variantId} was not found.`);
+      }
     }
 
     for (const loanId of affectedLoanIds) {

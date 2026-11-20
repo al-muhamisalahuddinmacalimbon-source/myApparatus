@@ -4,17 +4,35 @@ import pool from "@/lib/db";
 import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
 
 type BorrowItem = {
-  id: number;
+  id?: number;
+  variant_id?: number;
   quantity: number;
+};
+
+type StockRow = {
+  id: number;
+  variant_id?: number;
+  available_stock: number;
+  name: string;
+  variant_name?: string;
+  status: string;
+  variant_status?: string;
 };
 
 function isBorrowItem(value: unknown): value is BorrowItem {
   if (!value || typeof value !== "object") return false;
+  const hasId = "id" in value;
+  const hasVariantId = "variant_id" in value;
   return (
-    "id" in value &&
-    typeof value.id === "number" &&
-    Number.isInteger(value.id) &&
-    value.id > 0 &&
+    (hasId || hasVariantId) &&
+    (!hasId ||
+      (typeof value.id === "number" &&
+        Number.isInteger(value.id) &&
+        value.id > 0)) &&
+    (!hasVariantId ||
+      (typeof value.variant_id === "number" &&
+        Number.isInteger(value.variant_id) &&
+        value.variant_id > 0)) &&
     "quantity" in value &&
     typeof value.quantity === "number" &&
     Number.isInteger(value.quantity) &&
@@ -46,7 +64,8 @@ export async function POST(request: Request) {
       !Array.isArray(items) ||
       items.length === 0 ||
       !items.every(isBorrowItem) ||
-      new Set(items.map((item) => item.id)).size !== items.length ||
+      new Set(items.map((item) => item.variant_id ?? item.id)).size !==
+        items.length ||
       typeof dueDays !== "number" ||
       !Number.isInteger(dueDays) ||
       dueDays < 1 ||
@@ -77,46 +96,71 @@ export async function POST(request: Request) {
 
     const borrowedItems: Array<{
       id: number;
+      variant_id: number | null;
       name: string;
       quantity: number;
     }> = [];
 
     for (const item of items) {
-      const stockCheck = await client.query(
-        "SELECT available_stock, name, status FROM apparatus WHERE id = $1 FOR UPDATE",
-        [item.id],
-      );
+      const stockCheck = item.variant_id
+        ? await client.query<StockRow>(
+            `SELECT a.id, v.id AS variant_id, v.available_stock, a.name,
+               v.name AS variant_name, a.status, v.status AS variant_status
+             FROM apparatus_variants v
+             JOIN apparatus a ON a.id = v.apparatus_id
+             WHERE v.id = $1
+               AND ($2::integer IS NULL OR a.id = $2)
+             FOR UPDATE OF v`,
+            [item.variant_id, item.id ?? null],
+          )
+        : await client.query<StockRow>(
+            "SELECT id, available_stock, name, status FROM apparatus WHERE id = $1 FOR UPDATE",
+            [item.id],
+          );
 
       if (stockCheck.rows.length === 0) {
         await client.query("ROLLBACK");
         transactionStarted = false;
         return NextResponse.json(
-          { error: `Apparatus ID ${item.id} not found` },
+          {
+            error: item.variant_id
+              ? `Apparatus variant ID ${item.variant_id} not found`
+              : `Apparatus ID ${item.id} not found`,
+          },
           { status: 400 },
         );
       }
 
-      if (stockCheck.rows[0].available_stock < item.quantity) {
+      const stock = stockCheck.rows[0];
+      const isVariant = item.variant_id !== undefined;
+      const itemName = isVariant
+        ? `${stock.name} (${stock.variant_name})`
+        : stock.name;
+      if (stock.available_stock < item.quantity) {
         await client.query("ROLLBACK");
         transactionStarted = false;
         return NextResponse.json(
-          { error: `Insufficient stock for ${stockCheck.rows[0].name}` },
+          { error: `Insufficient stock for ${itemName}` },
           { status: 400 },
         );
       }
 
-      if (stockCheck.rows[0].status !== "Active") {
+      if (
+        stock.status !== "Active" ||
+        (isVariant && stock.variant_status !== "Active")
+      ) {
         await client.query("ROLLBACK");
         transactionStarted = false;
         return NextResponse.json(
-          { error: `${stockCheck.rows[0].name} is no longer available for borrowing.` },
+          { error: `${itemName} is no longer available for borrowing.` },
           { status: 409 },
         );
       }
 
       borrowedItems.push({
-        id: item.id,
-        name: stockCheck.rows[0].name,
+        id: stock.id,
+        variant_id: stock.variant_id ?? null,
+        name: itemName,
         quantity: item.quantity,
       });
     }
@@ -131,12 +175,14 @@ export async function POST(request: Request) {
 
     for (const item of borrowedItems) {
       await client.query(
-        "INSERT INTO loan_items (loan_id, apparatus_id, quantity) VALUES ($1, $2, $3)",
-        [loan.loan_id, item.id, item.quantity],
+        "INSERT INTO loan_items (loan_id, apparatus_id, variant_id, quantity) VALUES ($1, $2, $3, $4)",
+        [loan.loan_id, item.id, item.variant_id, item.quantity],
       );
       await client.query(
-        "UPDATE apparatus SET available_stock = available_stock - $1 WHERE id = $2",
-        [item.quantity, item.id],
+        item.variant_id
+          ? "UPDATE apparatus_variants SET available_stock = available_stock - $1 WHERE id = $2"
+          : "UPDATE apparatus SET available_stock = available_stock - $1 WHERE id = $2",
+        [item.quantity, item.variant_id ?? item.id],
       );
     }
 

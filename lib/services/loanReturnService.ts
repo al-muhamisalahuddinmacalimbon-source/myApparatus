@@ -46,11 +46,15 @@ export async function POST(_request: Request, { params }: RouteContext) {
     }
 
     const itemsResult = await client.query<{
+      loan_item_id: number;
       apparatus_id: number;
+      variant_id: number | null;
       return_quantity: number;
     }>(
       `SELECT
+         li.id AS loan_item_id,
          li.apparatus_id,
+         li.variant_id,
          (li.quantity - li.returned_quantity)::integer AS return_quantity
        FROM loan_items li
        WHERE li.loan_id = $1
@@ -69,23 +73,35 @@ export async function POST(_request: Request, { params }: RouteContext) {
     }
 
     for (const item of itemsResult.rows) {
-      const apparatusResult = await client.query(
-        `UPDATE apparatus
-         SET available_stock = available_stock + $1
-         WHERE id = $2
-         RETURNING id`,
-        [item.return_quantity, item.apparatus_id],
-      );
+      const apparatusResult = item.variant_id
+        ? await client.query(
+            `UPDATE apparatus_variants
+             SET available_stock = available_stock + $1
+             WHERE id = $2
+             RETURNING id`,
+            [item.return_quantity, item.variant_id],
+          )
+        : await client.query(
+            `UPDATE apparatus
+             SET available_stock = available_stock + $1
+             WHERE id = $2
+             RETURNING id`,
+            [item.return_quantity, item.apparatus_id],
+          );
 
       if (apparatusResult.rows.length === 0) {
-        throw new Error(`Apparatus ${item.apparatus_id} was not found.`);
+        throw new Error(
+          item.variant_id
+            ? `Apparatus variant ${item.variant_id} was not found.`
+            : `Apparatus ${item.apparatus_id} was not found.`,
+        );
       }
 
       await client.query(
         `UPDATE loan_items
          SET returned_quantity = quantity
-         WHERE loan_id = $1 AND apparatus_id = $2`,
-        [Number(id), item.apparatus_id],
+         WHERE id = $1`,
+        [item.loan_item_id],
       );
     }
 

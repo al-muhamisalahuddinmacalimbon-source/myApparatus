@@ -29,7 +29,10 @@ export async function GET(request: Request) {
       `SELECT
          s.student_id,
          s.full_name AS student_name,
-         a.name AS item_name,
+         CASE
+           WHEN v.id IS NULL THEN a.name
+           ELSE a.name || ' (' || v.name || ')'
+         END AS item_name,
          (li.quantity - li.returned_quantity)::integer AS quantity,
          to_char(timezone($1, l.borrowed_at)::date, 'YYYY-MM-DD') AS borrowed_date,
          CASE
@@ -47,6 +50,7 @@ export async function GET(request: Request) {
        JOIN students s ON s.student_id = l.student_id
        JOIN loan_items li ON li.loan_id = l.id
        JOIN apparatus a ON a.id = li.apparatus_id
+       LEFT JOIN apparatus_variants v ON v.id = li.variant_id
        WHERE l.status = 'Active'
          AND li.quantity > li.returned_quantity
          AND l.due_at <= NOW()

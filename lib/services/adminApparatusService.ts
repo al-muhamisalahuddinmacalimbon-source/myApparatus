@@ -57,9 +57,23 @@ function isApparatusInput(value: unknown): value is ApparatusInput {
 export async function GET() {
   try {
     const result = await pool.query(
-      `SELECT id, name, category, total_stock, available_stock, status, icon
-       FROM apparatus
-       ORDER BY id`,
+      `SELECT a.id, a.name, a.category, a.total_stock, a.available_stock, a.status, a.icon,
+         COALESCE((
+           SELECT json_agg(
+             json_build_object(
+               'id', v.id,
+               'apparatus_id', v.apparatus_id,
+               'name', v.name,
+               'total_stock', v.total_stock,
+               'available_stock', v.available_stock,
+               'status', v.status
+             ) ORDER BY v.id
+           )
+           FROM apparatus_variants v
+           WHERE v.apparatus_id = a.id
+         ), '[]'::json) AS variants
+       FROM apparatus a
+       ORDER BY a.id`,
     );
     return NextResponse.json(result.rows, {
       headers: { "Cache-Control": "no-store, max-age=0" },

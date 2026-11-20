@@ -85,14 +85,37 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     await client.query("BEGIN");
     transactionStarted = true;
 
-    const currentResult = await client.query(
-      "SELECT id FROM apparatus WHERE id = $1 FOR UPDATE",
+    const currentResult = await client.query<{
+      id: number;
+      total_stock: number;
+      available_stock: number;
+    }>(
+      "SELECT id, total_stock, available_stock FROM apparatus WHERE id = $1 FOR UPDATE",
       [Number(id)],
     );
     if (currentResult.rowCount === 0) {
       await client.query("ROLLBACK");
       transactionStarted = false;
       return NextResponse.json({ error: "Apparatus was not found." }, { status: 404 });
+    }
+
+    const variantsResult = await client.query<{ count: number }>(
+      `SELECT COUNT(*)::integer AS count
+       FROM apparatus_variants
+       WHERE apparatus_id = $1`,
+      [Number(id)],
+    );
+    if (
+      variantsResult.rows[0].count > 0 &&
+      (body.total_stock !== currentResult.rows[0].total_stock ||
+        body.available_stock !== currentResult.rows[0].available_stock)
+    ) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return NextResponse.json(
+        { error: "Update stock on each apparatus variant separately." },
+        { status: 409 },
+      );
     }
 
     const borrowedResult = await client.query<{ quantity: number }>(

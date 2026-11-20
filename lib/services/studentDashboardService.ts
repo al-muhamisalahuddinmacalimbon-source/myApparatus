@@ -22,14 +22,19 @@ export async function GET(_request: Request, { params }: RouteContext) {
            SUM(li.quantity - li.returned_quantity)::integer AS item_count,
            json_agg(
              json_build_object(
-               'name', a.name,
-               'quantity', li.quantity - li.returned_quantity
+               'name', CASE
+                 WHEN v.id IS NULL THEN a.name
+                 ELSE a.name || ' (' || v.name || ')'
+               END,
+               'quantity', li.quantity - li.returned_quantity,
+               'variant_id', li.variant_id
              )
              ORDER BY a.name
            ) AS items
          FROM loans l
          JOIN loan_items li ON li.loan_id = l.id
          JOIN apparatus a ON a.id = li.apparatus_id
+         LEFT JOIN apparatus_variants v ON v.id = li.variant_id
          WHERE l.student_id = $1
            AND l.status = 'Active'
            AND l.due_at < NOW()
@@ -45,14 +50,19 @@ export async function GET(_request: Request, { params }: RouteContext) {
            SUM(li.quantity - li.returned_quantity)::integer AS item_count,
            json_agg(
              json_build_object(
-               'name', a.name,
-               'quantity', li.quantity - li.returned_quantity
+               'name', CASE
+                 WHEN v.id IS NULL THEN a.name
+                 ELSE a.name || ' (' || v.name || ')'
+               END,
+               'quantity', li.quantity - li.returned_quantity,
+               'variant_id', li.variant_id
              )
              ORDER BY a.name
            ) AS items
          FROM loans l
          JOIN loan_items li ON li.loan_id = l.id
          JOIN apparatus a ON a.id = li.apparatus_id
+         LEFT JOIN apparatus_variants v ON v.id = li.variant_id
          WHERE l.student_id = $1
            AND l.status = 'Active'
            AND l.due_at >= NOW()
