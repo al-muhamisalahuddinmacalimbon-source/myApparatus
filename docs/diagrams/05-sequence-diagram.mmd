@@ -1,0 +1,96 @@
+sequenceDiagram
+  autonumber
+  actor Student
+  participant Browser as Browser UI
+  participant API as Next.js API Route
+  participant Service as Service Layer
+  participant DB as PostgreSQL DB
+  participant Writer as Notification Writer
+  actor Staff as Staff Admin
+
+  Student->>Browser: Select Beaker 250mL and submit borrow
+  Browser->>API: POST /api/borrow/submit {student_id, items:[{variant_id, quantity}], due_days}
+  API->>Service: borrowService.POST(request)
+  Service->>DB: Begin transaction, verify student, and lock selected variant
+  alt [conflict / insufficient stock]
+    DB-->>Service: Missing variant, inactive status, or insufficient available_stock
+    Service->>DB: ROLLBACK
+    Service-->>API: 400 or 409 error
+    API-->>Browser: Borrow error with no loan or stock mutation
+  else [available]
+    Service->>DB: INSERT loans and loan_items
+    Service->>DB: Decrement selected apparatus_variants.available_stock
+    Service->>DB: INSERT staff_notifications
+    Service->>Writer: addStudentNotification(client, notification)
+    Writer->>DB: INSERT student_notifications
+    Service->>DB: COMMIT
+    API-->>Browser: Loan, due_at, and variant-aware items
+    Browser-->>Student: Borrower slip and updated variant count
+    Staff->>API: GET /api/admin/notifications
+    API->>Service: notificationsService.GET()
+    Service->>DB: SELECT staff_notifications
+    DB-->>Staff: Borrow event and unread count
+  end
+
+  Student->>Browser: Select Furnace future one-hour slot and confirm
+  Browser->>API: POST /api/reservations {machine, student_id, start_time, end_time}
+  API->>Service: machineReservationsService.POST(request)
+  Service->>DB: Begin transaction, lock available machine, and insert reservation
+  alt [same machine and start-time conflict]
+    DB-->>Service: Unique index conflict
+    Service->>DB: ROLLBACK
+    Service-->>API: 409 conflict
+    API-->>Browser: Reservation conflict with no second Booked row
+  else [available]
+    Service->>DB: INSERT staff_notifications
+    Service->>Writer: addStudentNotification(client, notification)
+    Writer->>DB: INSERT student_notifications
+    Service->>DB: COMMIT reservation with status Booked
+    API-->>Browser: Confirmed reservation
+    Browser-->>Student: Reservation confirmation
+  end
+
+  opt Student requests cancellation of a booked reservation
+    Student->>Browser: Enter cancellation reason
+    Browser->>API: POST /api/reservations/[id]/cancellation-request
+    API->>Service: cancellationRequestService.POST(request, context)
+    Service->>DB: Insert reservation_cancellation_requests with status Pending
+    Service->>DB: INSERT staff_notifications
+    Service->>Writer: addStudentNotification(client, notification)
+    Writer->>DB: INSERT student_notifications
+    Service->>DB: COMMIT pending cancellation request
+    Staff->>API: GET /api/admin/reservation-cancellation-requests
+    API->>Service: cancellationRequestsService.GET()
+    Service->>DB: SELECT pending cancellation requests
+    DB-->>Staff: Pending cancellation request data
+    alt [available -> Pending -> Approved + Notify]
+      Staff->>API: POST /api/admin/reservation-cancellation-requests/[id] {decision: Approved}
+      API->>Service: cancellationReviewService.POST(request, context)
+      Service->>DB: Set request Approved and reservation Cancelled
+      Service->>Writer: addStudentNotification(client, notification)
+      Writer->>DB: INSERT student_notifications
+      Service->>DB: COMMIT
+      Service-->>API: Review result
+      API-->>Staff: Approved
+    else [Pending -> Declined + Notify]
+      Staff->>API: POST /api/admin/reservation-cancellation-requests/[id] {decision: Declined}
+      API->>Service: cancellationReviewService.POST(request, context)
+      Service->>DB: Set request Declined and leave reservation Booked
+      Service->>Writer: addStudentNotification(client, notification)
+      Writer->>DB: INSERT student_notifications
+      Service->>DB: COMMIT
+      Service-->>API: Review result
+      API-->>Staff: Declined
+    end
+  end
+
+  opt Student refreshes cancellation status or notifications
+    Student->>Browser: Open /reserve or /notifications
+    Browser->>API: GET /api/students/[id]/notifications
+    API->>Service: studentNotificationsService.GET(request, context)
+    Service->>DB: SELECT student_notifications and unread count
+    DB-->>Browser: Cancellation decision and staff note
+    Browser-->>Student: Updated notification
+  end
+
+  Note over Browser,API: NFR-02 requires HTTPS and server-verified Staff Admin authorization. HTTPS deployment is unverified, and inspected admin routes have no server-side role guard.
