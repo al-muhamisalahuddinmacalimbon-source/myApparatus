@@ -1,0 +1,53 @@
+flowchart TD
+  Start((Start))
+  Workflow{"Student action"}
+  Start --> Workflow
+
+  Workflow -->|"[borrow]"| BorrowFields{"Required fields present and Student registered?"}
+  BorrowFields -->|"[missing fields]"| BorrowError["Show validation error"]
+  BorrowError --> BorrowFields
+  BorrowFields -->|"[valid]"| StockCheck{"Selected parent and variant Active with enough stock?"}
+  StockCheck -->|"[variant out of stock]"| BorrowReject["Reject borrow; rollback; no stock change"]
+  StockCheck -->|"[inactive]"| BorrowReject
+  StockCheck -->|"[available]"| BorrowCreate["Create loans and loan_items"]
+  BorrowCreate --> BorrowStock["Decrement selected apparatus or apparatus_variants.available_stock"]
+  BorrowStock --> BorrowNotify["Write staff_notifications and student_notifications"]
+  BorrowNotify --> BorrowDone["Show borrower slip"]
+
+  Workflow -->|"[reserve machine]"| ReservationFields{"Student, machine, future start, and one-hour interval valid?"}
+  ReservationFields -->|"[missing fields]"| ReservationError["Show reservation validation error"]
+  ReservationError --> ReservationFields
+  ReservationFields -->|"[valid]"| MachineCheck{"Machine status available?"}
+  MachineCheck -->|"[unavailable]"| MachineReject["Reject machine reservation"]
+  MachineCheck -->|"[available]"| SlotCheck{"Same machine and start time already Booked?"}
+  SlotCheck -->|"[machine conflict]"| SlotReject["Return 409 conflict; no reservation"]
+  SlotCheck -->|"[available]"| Booked["Create reservation with status Booked"]
+  Booked --> ReservationNotify["Write Student and Staff notifications"]
+  ReservationNotify --> ReservationDone["Show reservation confirmation"]
+
+  Workflow -->|"[request cancellation]"| CancelRequest["Validate ownership and nonblank reason"]
+  CancelRequest --> CancelValid{"Valid request and no pending request?"}
+  CancelValid -->|"[missing fields]"| CancelError["Show cancellation validation error"]
+  CancelError --> CancelRequest
+  CancelValid -->|"[valid]"| Pending["Create request with status Pending"]
+  Pending --> NotifyStaff["Notify Staff Admin and Student"]
+  NotifyStaff --> StaffReview{"Staff Admin decision"}
+  StaffReview -->|"[Approved]"| Approved["Set request Approved; set reservation Cancelled"]
+  Approved --> NotifyApproved["Notify Student of approval"]
+  StaffReview -->|"[Declined]"| Declined["Set request Declined; leave reservation Booked"]
+  Declined --> NotifyDeclined["Notify Student of decline and staff note"]
+
+  StaffReturn["Staff Admin selects full loan or item lines"]
+  StaffReturn --> ReturnTransaction["Lock loan and unreturned loan_items"]
+  ReturnTransaction --> RestoreStock["Restore exact apparatus or variant stock"]
+  RestoreStock --> ReturnState["Update returned_quantity; set loan Returned when complete"]
+  ReturnState --> ReturnNotify["Write Student return notification"]
+
+  BorrowDone --> End((End))
+  BorrowReject --> End
+  MachineReject --> End
+  SlotReject --> End
+  ReservationDone --> End
+  NotifyApproved --> End
+  NotifyDeclined --> End
+  ReturnNotify --> End
