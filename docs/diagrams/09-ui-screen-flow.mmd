@@ -1,0 +1,64 @@
+flowchart TD
+  Student["Student"]
+  StaffAdmin["Staff Admin"]
+
+  subgraph StudentScreens["Student screens"]
+    Home["/"]
+    StudentHome["/home"]
+    Catalog["/catalog"]
+    CartModal["Cart drawer / BorrowerSlip modal"]
+    MyBookings["/my-bookings"]
+    Reserve["/reserve"]
+    BookingWindow["Booking window"]
+    CancellationReason["Cancellation reason field"]
+    Notices["/notices"]
+    NoticeDetail["/notices/[id]"]
+    StudentNotifications["/notifications"]
+    Help["/help"]
+    EmptyCatalog["Empty / unavailable catalog state"]
+    BorrowConflict["Borrow validation / stock error"]
+    ReservationConflict["Reservation conflict state"]
+    ReservationConfirmation["Booked confirmation"]
+    CancellationPending["Cancellation Pending / decision state"]
+  end
+
+  subgraph StaffScreens["Staff Admin screens"]
+    StaffLogin["/staff/login"]
+    StaffDashboard["/staff/dashboard"]
+    StaffCatalog["/staff/catalog"]
+    StaffReturns["/staff/returns"]
+    StaffReservations["/staff/reservations"]
+    StaffNotices["/staff/notices"]
+    StaffNotifications["/staff/notifications"]
+    StaffReports["/staff/reports"]
+  end
+
+  Student --> Home
+  Home --> StudentHome
+  StudentHome --> Catalog
+  StudentHome --> MyBookings
+  StudentHome --> Reserve
+  StudentHome --> Notices
+  StudentHome --> StudentNotifications
+  StudentHome --> Help
+  Catalog --> CartModal
+  Catalog --> EmptyCatalog
+  CartModal --> BorrowConflict
+  CartModal --> StudentHome
+  Reserve --> BookingWindow
+  BookingWindow --> ReservationConflict
+  BookingWindow --> ReservationConfirmation
+  BookingWindow --> CancellationReason
+  CancellationReason --> CancellationPending
+  Notices --> NoticeDetail
+
+  StaffAdmin --> StaffLogin
+  StaffLogin --> StaffDashboard
+  StaffAdmin --> StaffReturns
+  StaffAdmin --> StaffCatalog
+  StaffAdmin --> StaffReservations
+  StaffAdmin --> StaffNotices
+  StaffAdmin --> StaffNotifications
+  StaffAdmin --> StaffReports
+
+  %% There is no app/staff/page.tsx; /staff is not an implemented page route.

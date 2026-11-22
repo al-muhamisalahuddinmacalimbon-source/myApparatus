@@ -1,0 +1,36 @@
+flowchart LR
+  Student["Student"]
+  Browser["Browser UI"]
+  HTTPS["HTTPS / Staff Admin auth boundary<br/>NFR-02 target; not verified / no route guard observed"]
+
+  subgraph App["myApparatus internal API"]
+    BorrowAPI["POST /api/borrow/submit<br/>student_id, items[{variant_id, quantity}], due_days"]
+    ReservationAPI["POST /api/reservations<br/>machine, student_id, start_time, end_time"]
+    NotificationAPI["GET /api/students/[id]/notifications<br/>POST {id?} to mark read"]
+    Writer["studentNotificationWriter.addStudentNotification<br/>(client: PoolClient, notification: StudentNotificationInput)"]
+    Services["borrowService.POST<br/>machineReservationsService.POST<br/>other notification-producing services"]
+  end
+  DB[("PostgreSQL<br/>student_notifications, staff_notifications")]
+  Staff["Staff Admin"]
+  FutureAdapter["Future Email / SMS provider adapter<br/>NOT implemented"]
+
+  Student --> Browser
+  Browser --> HTTPS
+  HTTPS --> BorrowAPI
+  HTTPS --> ReservationAPI
+  HTTPS --> NotificationAPI
+  BorrowAPI --> Services
+  ReservationAPI --> Services
+  Services -->|"transactional notification input<br/>studentId, eventType, message, href"| Writer
+  Writer -->|"INSERT student_notifications"| DB
+  Services -->|"Borrow / Reservation / Cancellation Request event"| DB
+  NotificationAPI -->|"SELECT or set read_at by student_id"| DB
+  DB -->|"notifications, unreadCount"| NotificationAPI
+  NotificationAPI --> Browser
+  Browser --> Student
+  Staff -->|"GET /api/admin/notifications"| HTTPS
+  HTTPS -.->|"future adapter seam only; no provider call exists"| FutureAdapter
+
+  Error["Error handling<br/>transaction callers roll back on failure;<br/>API returns an error response; no email/SMS fallback"]
+  Services -.-> Error
+  Writer -.-> Error
