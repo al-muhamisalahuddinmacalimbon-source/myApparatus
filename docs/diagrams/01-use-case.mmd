@@ -1,0 +1,54 @@
+flowchart LR
+  Student["Student"]
+  StaffAdmin["Staff Admin"]
+
+  subgraph System["myApparatus System"]
+    UC_Lookup(["Look up or register student"])
+    UC_Browse(["Browse apparatus catalog"])
+    UC_SelectVariant(["Select size or material"])
+    UC_Borrow(["Submit borrowing slip"])
+    UC_ValidateStock(["Validate selected stock"])
+    UC_ViewActivity(["View borrowing and reservation activity"])
+    UC_ViewLoans(["View active borrowings"])
+    UC_Reserve(["Reserve shared machine"])
+    UC_CheckSlot(["Check available machine slot"])
+    UC_RequestCancellation(["Request reservation cancellation"])
+    UC_ViewNotifications(["View and mark notifications read"])
+    UC_ManageApparatus(["Manage apparatus and variants"])
+    UC_ManageMachines(["Manage and archive machines"])
+    UC_ManageLoans(["Review active loans and remarks"])
+    UC_ReturnLoan(["Confirm full loan return"])
+    UC_ReturnItems(["Record selected item returns"])
+    UC_ManageReservations(["Review and cancel reservations"])
+    UC_ReviewCancellation(["Review cancellation request"])
+    UC_ManageNotices(["Create, edit, pin, and delete notices"])
+    UC_ManageStaffNotifications(["View and mark staff notifications read"])
+    UC_Liability(["Generate and export liability report"])
+    UC_Health(["Check database health"])
+  end
+
+  Student --> UC_Lookup
+  Student --> UC_Browse
+  Student --> UC_SelectVariant
+  Student --> UC_Borrow
+  Student --> UC_ViewActivity
+  Student --> UC_ViewLoans
+  Student --> UC_Reserve
+  Student --> UC_RequestCancellation
+  Student --> UC_ViewNotifications
+
+  StaffAdmin --> UC_ManageApparatus
+  StaffAdmin --> UC_ManageMachines
+  StaffAdmin --> UC_ManageLoans
+  StaffAdmin --> UC_ReturnLoan
+  StaffAdmin --> UC_ReturnItems
+  StaffAdmin --> UC_ManageReservations
+  StaffAdmin --> UC_ReviewCancellation
+  StaffAdmin --> UC_ManageNotices
+  StaffAdmin --> UC_ManageStaffNotifications
+  StaffAdmin --> UC_Liability
+  StaffAdmin --> UC_Health
+
+  UC_Borrow -.->|"<<include>>"| UC_ValidateStock
+  UC_Reserve -.->|"<<include>>"| UC_CheckSlot
+  UC_RequestCancellation -.->|"<<extend>>"| UC_Reserve

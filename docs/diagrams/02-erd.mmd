@@ -1,0 +1,127 @@
+erDiagram
+  %% No users table exists in migrations 001-007. Identity tables are students and admins.
+  %% Stock checks: total_stock >= 0; available_stock >= 0; available_stock <= total_stock.
+  %% Status values: apparatus and apparatus_variants Active/Inactive; machines available/in_use/maintenance/archived.
+  %% loans Active/Returned; reservations Booked/Cancelled; cancellation requests Pending/Approved/Declined.
+  %% students.year_level is 1..6; loan_items.quantity > 0 and returned_quantity <= quantity.
+  %% reservations.end_time > start_time; machine name is unique; lab_notices category is Schedule/Safety/Announcements.
+  %% uq_active_reservation is unique (machine_id, start_time) only for Booked rows.
+  %% uq_pending_reservation_cancellation is unique by reservation_id only for Pending rows.
+  STUDENTS {
+    varchar student_id PK
+    varchar full_name
+    varchar course
+    smallint year_level
+    timestamptz created_at
+  }
+  APPARATUS {
+    serial id PK
+    varchar name
+    varchar category
+    varchar icon
+    integer total_stock
+    integer available_stock
+    varchar status
+    timestamptz created_at
+  }
+  APPARATUS_VARIANTS {
+    serial id PK
+    integer apparatus_id FK
+    varchar name
+    integer total_stock
+    integer available_stock
+    varchar status
+    timestamptz created_at
+  }
+  LOANS {
+    serial id PK
+    varchar student_id FK
+    timestamptz borrowed_at
+    timestamptz due_at
+    timestamptz returned_at
+    varchar status
+    text remarks
+  }
+  LOAN_ITEMS {
+    serial id PK
+    integer loan_id FK
+    integer apparatus_id FK
+    integer quantity
+    integer returned_quantity
+    integer variant_id FK
+  }
+  MACHINES {
+    serial id PK
+    varchar name UK
+    varchar status
+    varchar model
+    text specifications
+    text notes
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  RESERVATIONS {
+    serial id PK
+    integer machine_id FK
+    varchar student_id FK
+    timestamptz start_time
+    timestamptz end_time
+    varchar status
+    timestamptz created_at
+  }
+  ADMINS {
+    serial id PK
+    varchar username UK
+    varchar password_hash
+    timestamptz created_at
+  }
+  RESERVATION_CANCELLATION_REQUESTS {
+    serial id PK
+    integer reservation_id FK
+    varchar student_id FK
+    text reason
+    varchar status
+    text staff_note
+    timestamptz created_at
+    timestamptz reviewed_at
+    integer reviewed_by FK
+  }
+  STAFF_NOTIFICATIONS {
+    serial id PK
+    varchar event_type
+    varchar student_id FK
+    text message
+    timestamptz created_at
+    timestamptz read_at
+  }
+  STUDENT_NOTIFICATIONS {
+    serial id PK
+    varchar student_id FK
+    varchar event_type
+    text message
+    text href
+    timestamptz created_at
+    timestamptz read_at
+  }
+  LAB_NOTICES {
+    serial id PK
+    varchar title
+    varchar category
+    text body
+    boolean pinned
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  STUDENTS ||--o{ LOANS : student_id
+  LOANS ||--o{ LOAN_ITEMS : loan_id
+  APPARATUS ||--o{ APPARATUS_VARIANTS : apparatus_id
+  APPARATUS ||--o{ LOAN_ITEMS : apparatus_id
+  APPARATUS_VARIANTS o|--o{ LOAN_ITEMS : variant_id
+  MACHINES ||--o{ RESERVATIONS : machine_id
+  STUDENTS ||--o{ RESERVATIONS : student_id
+  RESERVATIONS ||--o{ RESERVATION_CANCELLATION_REQUESTS : reservation_id
+  STUDENTS ||--o{ RESERVATION_CANCELLATION_REQUESTS : student_id
+  ADMINS o|--o{ RESERVATION_CANCELLATION_REQUESTS : reviewed_by
+  STUDENTS ||--o{ STAFF_NOTIFICATIONS : student_id
+  STUDENTS ||--o{ STUDENT_NOTIFICATIONS : student_id
