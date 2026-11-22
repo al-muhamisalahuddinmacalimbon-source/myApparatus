@@ -1,0 +1,39 @@
+flowchart LR
+  Student["Student"]
+  StaffAdmin["Staff Admin"]
+  Browser["Client Browser<br/>Responsive UI: 375px / 1280px"]
+  Transport["HTTPS boundary<br/>NFR-02 deployment target"]
+
+  subgraph NextApp["Next.js App Router Application"]
+    Frontend["Frontend pages and UI state<br/>Student and Staff screens"]
+    API["Backend API routes<br/>app/api"]
+    Services["Service modules<br/>lib/services"]
+    Guard["Role-Based Auth / Middleware<br/>NFR-02 required target<br/>NOT present in inspected routes"]
+  end
+  DB[("PostgreSQL Database<br/>Version not established by inspected source")]
+
+  Student --> Browser
+  StaffAdmin --> Browser
+  Browser --> Transport
+  Transport --> Frontend
+  Browser --> Transport
+  Transport --> API
+  Frontend --> API
+  API --> Services
+  Services --> DB
+  Services -. "required authorization control; implementation gap" .-> Guard
+
+  NFR01["NFR-01: API/catalog p95 <= 2s target"]
+  NFR02["NFR-02: HTTPS + server-side Staff Admin RBAC; gap"]
+  NFR03["NFR-03: PostgreSQL constraints and transactions"]
+  NFR04["NFR-04: viewport tests at 375px and 1280px"]
+  NFR05["NFR-05: 15s refresh and no-store where configured"]
+  NFR06["NFR-06: validation, 4xx responses, no partial writes"]
+
+  NFR01 -.-> API
+  NFR02 -.-> Transport
+  NFR02 -.-> Guard
+  NFR03 -.-> DB
+  NFR04 -.-> Browser
+  NFR05 -.-> Frontend
+  NFR06 -.-> API

@@ -1,0 +1,64 @@
+flowchart TD
+  Student["Student"]
+  StaffAdmin["Staff Admin"]
+
+  P1(("1.0 Catalog / Variants"))
+  P2(("2.0 Machines"))
+  P3(("3.0 Borrowing / Reservations / Student identity"))
+  P4(("4.0 Returns / Cancellations / Liability"))
+  P5(("5.0 Notices"))
+  P6(("6.0 Notifications"))
+
+  D1[("D1 Identity and catalog store<br/>students, apparatus, apparatus_variants, machines")]
+  D2[("D2 Loan store<br/>loans, loan_items")]
+  D3[("D3 Reservation store<br/>reservations, reservation_cancellation_requests")]
+  D4[("D4 Notice store<br/>lab_notices")]
+  D5[("D5 Notification store<br/>student_notifications, staff_notifications")]
+
+  Student -->|"catalog filters"| P1
+  P1 -->|"catalog data"| Student
+  StaffAdmin -->|"apparatus and variant changes"| P1
+  P1 -->|"apparatus and variant records"| StaffAdmin
+  P1 <-->|"apparatus and variant records"| D1
+
+  Student -->|"machine availability query"| P2
+  P2 -->|"available machines and reservation calendar"| Student
+  StaffAdmin -->|"machine changes"| P2
+  P2 -->|"machine records"| StaffAdmin
+  P2 <-->|"machine records"| D1
+
+  Student -->|"Student ID, registration data, borrow request, machine reservation request"| P3
+  P3 -->|"Student profile, borrowing activity, borrow confirmation, reservation confirmation, conflict response"| Student
+  StaffAdmin -->|"reservation calendar query"| P3
+  P3 -->|"reservation calendar"| StaffAdmin
+  P3 <-->|"student and apparatus records"| D1
+  P3 <-->|"loan and loan-item records"| D2
+  P3 <-->|"reservation records"| D3
+  P3 -->|"notification events"| P6
+
+  Student -->|"cancellation request"| P4
+  P4 -->|"cancellation status and return status"| Student
+  StaffAdmin -->|"return actions and cancellation decisions"| P4
+  P4 -->|"active loans, borrowing history, cancellation requests, return status, liability report"| StaffAdmin
+  P4 <-->|"student, apparatus, variant, and machine records"| D1
+  P4 <-->|"loan and loan-item records"| D2
+  P4 <-->|"reservation and cancellation-request records"| D3
+  P4 -->|"notification events"| P6
+
+  Student -->|"notice query"| P5
+  P5 -->|"notice content"| Student
+  StaffAdmin -->|"notice changes"| P5
+  P5 -->|"notice records"| StaffAdmin
+  P5 <-->|"notice records"| D4
+  P5 -->|"notice notification events"| P6
+
+  Student -->|"Student notification read state"| P6
+  P6 -->|"Student notifications and unread count"| Student
+  StaffAdmin -->|"Staff notification read state"| P6
+  P6 -->|"Staff notifications and unread count"| StaffAdmin
+  P6 <-->|"notification records"| D5
+  P6 <-->|"Student identity records"| D1
+
+  StaffAdmin -->|"liability report request"| P4
+
+  %% admins is a schema table but is not read by the inspected route/service flows.

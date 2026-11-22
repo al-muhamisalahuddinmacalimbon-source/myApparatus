@@ -1,0 +1,9 @@
+flowchart LR
+  Student["Student"]
+  System(("0.0 myApparatus System"))
+  StaffAdmin["Staff Admin"]
+
+  Student -->|"Student ID and registration data, catalog filters, borrow request, machine query, reservation request, cancellation reason, notification read state, notice query"| System
+  System -->|"Student profile, catalog data, borrowing activity, reservation calendar, confirmations, notices, notifications, cancellation status, errors"| Student
+  StaffAdmin -->|"Apparatus changes, variant changes, machine changes, reservation query, return actions, cancellation decisions, notice changes, notification read state, liability report request"| System
+  System -->|"Catalog records, active loans, reservations, cancellation requests, notices, notifications, liability report, operation response"| StaffAdmin
