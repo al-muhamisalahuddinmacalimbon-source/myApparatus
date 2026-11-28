@@ -81,6 +81,28 @@ export async function POST(request: Request) {
     const studentId = "student_id" in body ? body.student_id : undefined;
     const startTime = "start_time" in body ? body.start_time : undefined;
     const endTime = "end_time" in body ? body.end_time : undefined;
+    const subjectName = "subject_name" in body && typeof body.subject_name === "string"
+      ? body.subject_name.trim() || null
+      : null;
+    const instructorName = "instructor_name" in body && typeof body.instructor_name === "string"
+      ? body.instructor_name.trim() || null
+      : null;
+    const instructorEndorsed =
+      "instructor_endorsed" in body && typeof body.instructor_endorsed === "boolean"
+        ? body.instructor_endorsed
+        : false;
+    const endorsementMethod =
+      "endorsement_method" in body && typeof body.endorsement_method === "string"
+        ? body.endorsement_method.trim() || null
+        : null;
+    const signatureData =
+      "instructor_signature_data" in body && typeof body.instructor_signature_data === "string"
+        ? body.instructor_signature_data
+        : null;
+    const endorsedAt =
+      "endorsed_at" in body && typeof body.endorsed_at === "string"
+        ? body.endorsed_at
+        : null;
 
     if (
       typeof machine !== "string" ||
@@ -133,10 +155,31 @@ export async function POST(request: Request) {
     }
 
     const result = await client.query(
-      `INSERT INTO reservations (machine_id, student_id, start_time, end_time)
-       VALUES ($1, $2, $3::timestamptz, $4::timestamptz)
-       RETURNING id, start_time, end_time, student_id`,
-      [machineResult.rows[0].id, studentId.trim(), startTime, endTime],
+      `INSERT INTO reservations (
+         machine_id, student_id, start_time, end_time,
+         subject_name, instructor_name, instructor_endorsed,
+         endorsement_method, instructor_signature_data, endorsed_at
+       )
+       VALUES (
+         $1, $2, $3::timestamptz, $4::timestamptz,
+         $5, $6, $7, $8, $9, $10::timestamptz
+       )
+       RETURNING id, start_time, end_time, student_id,
+         subject_name, instructor_name, endorsement_token,
+         instructor_endorsed, endorsement_method,
+         instructor_signature_data, endorsed_at`,
+      [
+        machineResult.rows[0].id,
+        studentId.trim(),
+        startTime,
+        endTime,
+        subjectName,
+        instructorName,
+        instructorEndorsed,
+        endorsementMethod,
+        signatureData,
+        endorsedAt,
+      ],
     );
 
     await client.query(

@@ -9,4 +9,5 @@ export type LabNotice = {
   body: string;
   pinned: boolean;
   created_at: string;
+  updated_at: string;
 };

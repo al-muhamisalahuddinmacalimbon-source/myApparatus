@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
+import { requireStaffSession } from "@/lib/auth/staffSession";
 
 type RouteContext = {
   params: Promise<{ id: string; variantId: string }>;
@@ -35,6 +36,9 @@ function isVariantInput(value: unknown): value is VariantInput {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const guard = await requireStaffSession(request);
+  if ("response" in guard) return guard.response;
+
   const { id, variantId } = await params;
   if (!/^[1-9]\d*$/.test(id) || !/^[1-9]\d*$/.test(variantId)) {
     return NextResponse.json(
@@ -109,7 +113,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
            available_stock = $3,
            status = $4
        WHERE id = $5 AND apparatus_id = $6
-       RETURNING id, apparatus_id, name, total_stock, available_stock, status`,
+       RETURNING id, apparatus_id, name, total_stock, available_stock, status, created_at`,
       [
         body.name.trim(),
         body.total_stock,

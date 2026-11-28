@@ -22,6 +22,7 @@ export type StaffLoanStatus = "Active" | "Overdue";
 export type StaffLoanItem = {
   name: string;
   quantity: number;
+  variant_id?: number | null;
 };
 
 export type ReturnLoanItem = StaffLoanItem & {
@@ -37,6 +38,13 @@ export type StudentActiveLoans = {
     borrowedAt: string;
     dueAt: string;
     items: ReturnLoanItem[];
+    subject_name: string | null;
+    instructor_name: string | null;
+    endorsement_token: string | null;
+    instructor_endorsed: boolean;
+    endorsement_method: string | null;
+    instructor_signature_data: string | null;
+    endorsed_at: string | null;
   }>;
 };
 
@@ -46,6 +54,47 @@ export type BorrowingHistoryItem = {
   quantity: number;
   returnedQuantity: number;
   activeQuantity: number;
+  variantId: number | null;
+  returnCondition: "good" | "damaged" | "lost";
+  damagedQty: number;
+  lostQty: number;
+  damageNotes: string | null;
+};
+
+export type InstructorEndorsement = {
+  subject_name?: string | null;
+  instructor_name?: string | null;
+  endorsement_token?: string | null;
+  instructor_endorsed?: boolean;
+  endorsement_method?: string | null;
+  instructor_signature_data?: string | null;
+  endorsed_at?: string | null;
+};
+
+export type BorrowRequestItem = {
+  id?: number;
+  variant_id?: number;
+  quantity: number;
+};
+
+export type BorrowRequest = InstructorEndorsement & {
+  student_id: string;
+  items: BorrowRequestItem[];
+  due_days?: number;
+};
+
+export type LoanReturnCondition = {
+  returnCondition: "good" | "damaged" | "lost";
+  damagedQty: number;
+  lostQty: number;
+  damageNotes: string | null;
+};
+
+export type ReservationRequest = InstructorEndorsement & {
+  machine: string;
+  student_id: string;
+  start_time: string;
+  end_time: string;
 };
 
 export type StudentBorrowingHistory = {
@@ -58,10 +107,17 @@ export type StudentBorrowingHistory = {
     returnedAt: string | null;
     status: StaffLoanStatus | "Returned";
     items: BorrowingHistoryItem[];
+    subject_name: string | null;
+    instructor_name: string | null;
+    endorsement_token: string | null;
+    instructor_endorsed: boolean;
+    endorsement_method: string | null;
+    instructor_signature_data: string | null;
+    endorsed_at: string | null;
   }>;
 };
 
-export type StaffLoan = {
+export type StaffLoan = InstructorEndorsement & {
   loanId: number;
   studentId: string;
   studentName: string;

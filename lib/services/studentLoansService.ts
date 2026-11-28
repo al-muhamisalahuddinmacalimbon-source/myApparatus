@@ -19,6 +19,13 @@ export async function GET(
          CEIL(
            EXTRACT(EPOCH FROM (l.due_at - NOW())) / 86400
          )::integer AS days_until_due,
+         l.subject_name,
+         l.instructor_name,
+         l.endorsement_token::text AS endorsement_token,
+         l.instructor_endorsed,
+         l.endorsement_method,
+         l.instructor_signature_data,
+         l.endorsed_at,
          json_agg(
            json_build_object(
              'name', CASE

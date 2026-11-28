@@ -20,7 +20,9 @@ export function isLabNotice(value: unknown): value is LabNotice {
     "pinned" in value &&
     typeof value.pinned === "boolean" &&
     "created_at" in value &&
-    typeof value.created_at === "string"
+    typeof value.created_at === "string" &&
+    "updated_at" in value &&
+    typeof value.updated_at === "string"
   );
 }
 

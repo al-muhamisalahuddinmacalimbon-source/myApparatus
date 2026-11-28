@@ -24,7 +24,14 @@ export async function GET() {
          l.borrowed_at AS "borrowedAt",
          l.due_at AS "dueAt",
          CASE WHEN l.due_at < NOW() THEN 'Overdue' ELSE 'Active' END AS status,
-         l.remarks
+         l.remarks,
+         l.subject_name AS "subject_name",
+         l.instructor_name AS "instructor_name",
+         l.endorsement_token::text AS "endorsement_token",
+         l.instructor_endorsed AS "instructor_endorsed",
+         l.endorsement_method AS "endorsement_method",
+         l.instructor_signature_data AS "instructor_signature_data",
+         l.endorsed_at AS "endorsed_at"
        FROM loans l
        JOIN students s ON s.student_id = l.student_id
        JOIN loan_items li ON li.loan_id = l.id

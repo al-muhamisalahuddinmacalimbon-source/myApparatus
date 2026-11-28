@@ -1,5 +1,5 @@
 -- Demo technician accounts. Run after database/migrations/001_init.sql.
--- The password for every mock staff account is 123.
+-- Password hashes use bcrypt via pgcrypto; the plaintext password is only 123 in local seed data.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 INSERT INTO admins (username, password_hash) VALUES

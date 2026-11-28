@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { mockStaff } from "@/lib/mockStaff";
 
 export default function StaffLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const enteredUsername = username.trim();
 
@@ -20,18 +20,39 @@ export default function StaffLoginPage() {
       return;
     }
 
-    const matchingStaff = mockStaff.find(
-      (staff) => staff.username.toLowerCase() === enteredUsername.toLowerCase(),
-    );
-    localStorage.setItem(
-      "staff",
-      JSON.stringify({
-        username: enteredUsername,
-        name: matchingStaff?.name ?? enteredUsername,
-      }),
-    );
+    setSubmitting(true);
     setError("");
-    router.push("/staff/dashboard");
+    try {
+      const response = await fetch("/api/auth/staff/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: enteredUsername,
+          password,
+        }),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          result &&
+            typeof result === "object" &&
+            "error" in result &&
+            typeof result.error === "string"
+            ? result.error
+            : "Unable to sign in.",
+        );
+      }
+      router.push("/staff/dashboard");
+      router.refresh();
+    } catch (loginError) {
+      setError(
+        loginError instanceof Error
+          ? loginError.message
+          : "Unable to sign in.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -99,9 +120,10 @@ export default function StaffLoginPage() {
 
             <button
               className="h-11 rounded bg-maroon font-semibold text-surface hover:bg-charcoal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              disabled={submitting}
               type="submit"
             >
-              Sign in
+              {submitting ? "Signing in..." : "Sign in"}
             </button>
           </form>
 

@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     const result = await client.query(
       `INSERT INTO lab_notices (title, category, body, pinned)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, title, category, body, pinned, created_at`,
+       RETURNING id, title, category, body, pinned, created_at, updated_at`,
       [body.title.trim(), body.category, body.body.trim(), body.pinned],
     );
     const studentsResult = await client.query<{ student_id: string }>(
@@ -123,7 +123,7 @@ export async function PUT(request: Request) {
        SET title = $1, category = $2, body = $3, pinned = $4,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $5
-       RETURNING id, title, category, body, pinned, created_at`,
+       RETURNING id, title, category, body, pinned, created_at, updated_at`,
       [body.title.trim(), body.category, body.body.trim(), body.pinned, noticeId],
     );
     if (result.rows.length === 0) {

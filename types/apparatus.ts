@@ -5,6 +5,7 @@ export type ApparatusVariant = {
   total_stock: number;
   available_stock: number;
   status: "Active" | "Inactive";
+  created_at: string;
 };
 
 export type ApparatusRecord = {
@@ -33,7 +34,9 @@ export function isApparatusVariant(value: unknown): value is ApparatusVariant {
     "available_stock" in value &&
     typeof value.available_stock === "number" &&
     "status" in value &&
-    (value.status === "Active" || value.status === "Inactive")
+    (value.status === "Active" || value.status === "Inactive") &&
+    "created_at" in value &&
+    typeof value.created_at === "string"
   );
 }
 

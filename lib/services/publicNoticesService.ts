@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const result = await pool.query(
-      `SELECT id, title, category, body, pinned, created_at
+      `SELECT id, title, category, body, pinned, created_at, updated_at
        FROM lab_notices
        ORDER BY pinned DESC, created_at DESC`,
     );

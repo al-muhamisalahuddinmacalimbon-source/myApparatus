@@ -20,7 +20,6 @@ import NotificationBell, {
 import {
   useEffect,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -83,32 +82,6 @@ const navigationItems = [
   },
 ];
 
-function getStoredStaffName() {
-  const storedStaff = localStorage.getItem("staff");
-  if (!storedStaff) return "Staff";
-
-  try {
-    const parsed: unknown = JSON.parse(storedStaff);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      "name" in parsed &&
-      typeof parsed.name === "string"
-    ) {
-      return parsed.name;
-    }
-  } catch {
-    return "Staff";
-  }
-
-  return "Staff";
-}
-
-function subscribeToStaffChanges(onChange: () => void) {
-  window.addEventListener("storage", onChange);
-  return () => window.removeEventListener("storage", onChange);
-}
-
 export default function StaffShell({ children }: StaffShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -117,11 +90,38 @@ export default function StaffShell({ children }: StaffShellProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationError, setNotificationError] = useState("");
   const [notificationsLoading, setNotificationsLoading] = useState(true);
-  const staffName = useSyncExternalStore(
-    subscribeToStaffChanges,
-    getStoredStaffName,
-    () => "Staff",
-  );
+  const [staffName, setStaffName] = useState("Staff");
+
+  useEffect(() => {
+    let active = true;
+    async function loadStaff() {
+      try {
+        const response = await fetch("/api/auth/staff/me", { cache: "no-store" });
+        if (!response.ok) {
+          if (response.status === 401) {
+            router.push("/staff/login");
+          }
+          return;
+        }
+        const result: unknown = await response.json();
+        if (
+          active &&
+          result &&
+          typeof result === "object" &&
+          "username" in result &&
+          typeof result.username === "string"
+        ) {
+          setStaffName(result.username);
+        }
+      } catch (staffError) {
+        console.error("Unable to load staff session:", staffError);
+      }
+    }
+    void loadStaff();
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   useEffect(() => {
     let active = true;
@@ -277,8 +277,10 @@ export default function StaffShell({ children }: StaffShellProps) {
   }
 
   function logOut() {
-    localStorage.removeItem("staff");
-    router.push("/");
+    void fetch("/api/auth/staff/logout", { method: "POST" }).finally(() => {
+      router.push("/");
+      router.refresh();
+    });
   }
 
   const bellNotifications: NotificationBellItem[] = notifications.map(

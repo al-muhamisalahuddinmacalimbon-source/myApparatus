@@ -17,7 +17,8 @@ export async function GET(request: Request) {
                'name', v.name,
                'total_stock', v.total_stock,
                'available_stock', v.available_stock,
-               'status', v.status
+               'status', v.status,
+               'created_at', v.created_at
              ) ORDER BY v.id
            )
            FROM apparatus_variants v

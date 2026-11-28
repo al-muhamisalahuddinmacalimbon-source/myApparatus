@@ -57,6 +57,28 @@ export async function POST(request: Request) {
     const items = "items" in body ? body.items : undefined;
     const dueDays =
       "due_days" in body && body.due_days !== undefined ? body.due_days : 3;
+    const subjectName = "subject_name" in body && typeof body.subject_name === "string"
+      ? body.subject_name.trim() || null
+      : null;
+    const instructorName = "instructor_name" in body && typeof body.instructor_name === "string"
+      ? body.instructor_name.trim() || null
+      : null;
+    const instructorEndorsed =
+      "instructor_endorsed" in body && typeof body.instructor_endorsed === "boolean"
+        ? body.instructor_endorsed
+        : false;
+    const endorsementMethod =
+      "endorsement_method" in body && typeof body.endorsement_method === "string"
+        ? body.endorsement_method.trim() || null
+        : null;
+    const signatureData =
+      "instructor_signature_data" in body && typeof body.instructor_signature_data === "string"
+        ? body.instructor_signature_data
+        : null;
+    const endorsedAt =
+      "endorsed_at" in body && typeof body.endorsed_at === "string"
+        ? body.endorsed_at
+        : null;
 
     if (
       typeof studentId !== "string" ||
@@ -166,10 +188,29 @@ export async function POST(request: Request) {
     }
 
     const loanResult = await client.query(
-      `INSERT INTO loans (student_id, due_at, status)
-       VALUES ($1, CURRENT_TIMESTAMP + ($2 * INTERVAL '1 day'), 'Active')
-       RETURNING id AS loan_id, borrowed_at, due_at, remarks`,
-      [studentId.trim(), dueDays],
+      `INSERT INTO loans (
+         student_id, due_at, status, subject_name, instructor_name,
+         instructor_endorsed, endorsement_method, instructor_signature_data,
+         endorsed_at
+       )
+       VALUES (
+         $1, CURRENT_TIMESTAMP + ($2 * INTERVAL '1 day'), 'Active',
+         $3, $4, $5, $6, $7, $8::timestamptz
+       )
+       RETURNING id AS loan_id, borrowed_at, due_at, remarks,
+         subject_name, instructor_name, endorsement_token,
+         instructor_endorsed, endorsement_method,
+         instructor_signature_data, endorsed_at`,
+      [
+        studentId.trim(),
+        dueDays,
+        subjectName,
+        instructorName,
+        instructorEndorsed,
+        endorsementMethod,
+        signatureData,
+        endorsedAt,
+      ],
     );
     const loan = loanResult.rows[0];
 

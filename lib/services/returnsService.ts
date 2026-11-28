@@ -20,6 +20,18 @@ type HistoryLoanRow = {
   returnedQuantity: number | null;
   activeQuantity: number | null;
   overdue: boolean | null;
+  variantId: number | null;
+  returnCondition: "good" | "damaged" | "lost" | null;
+  damagedQty: number | null;
+  lostQty: number | null;
+  damageNotes: string | null;
+  subjectName: string | null;
+  instructorName: string | null;
+  endorsementToken: string | null;
+  instructorEndorsed: boolean | null;
+  endorsementMethod: string | null;
+  instructorSignatureData: string | null;
+  endorsedAt: string | null;
 };
 
 export async function GET(request: Request) {
@@ -48,7 +60,19 @@ export async function GET(request: Request) {
          li.quantity::integer AS quantity,
          li.returned_quantity::integer AS "returnedQuantity",
          (li.quantity - li.returned_quantity)::integer AS "activeQuantity",
-         (l.status = 'Active' AND l.due_at < NOW()) AS overdue
+         (l.status = 'Active' AND l.due_at < NOW()) AS overdue,
+         li.variant_id AS "variantId",
+         li.return_condition AS "returnCondition",
+         li.damaged_qty AS "damagedQty",
+         li.lost_qty AS "lostQty",
+         li.damage_notes AS "damageNotes",
+         l.subject_name AS "subjectName",
+         l.instructor_name AS "instructorName",
+         l.endorsement_token::text AS "endorsementToken",
+         l.instructor_endorsed AS "instructorEndorsed",
+         l.endorsement_method AS "endorsementMethod",
+         l.instructor_signature_data AS "instructorSignatureData",
+         l.endorsed_at::text AS "endorsedAt"
        FROM students s
        LEFT JOIN loans l
          ON l.student_id = s.student_id
@@ -98,6 +122,13 @@ export async function GET(request: Request) {
                 ? "Overdue"
                 : "Active",
           items: [],
+          subject_name: row.subjectName,
+          instructor_name: row.instructorName,
+          endorsement_token: row.endorsementToken,
+          instructor_endorsed: row.instructorEndorsed ?? false,
+          endorsement_method: row.endorsementMethod,
+          instructor_signature_data: row.instructorSignatureData,
+          endorsed_at: row.endorsedAt,
         };
         loansById.set(row.loanId, loan);
         student.loans.push(loan);
@@ -119,6 +150,11 @@ export async function GET(request: Request) {
         quantity: row.quantity,
         returnedQuantity: row.returnedQuantity,
         activeQuantity: row.activeQuantity,
+        variantId: row.variantId,
+        returnCondition: row.returnCondition ?? "good",
+        damagedQty: row.damagedQty ?? 0,
+        lostQty: row.lostQty ?? 0,
+        damageNotes: row.damageNotes,
       };
       loan.items.push(item);
     }
