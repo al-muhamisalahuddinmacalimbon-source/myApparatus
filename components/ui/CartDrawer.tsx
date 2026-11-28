@@ -19,11 +19,15 @@ type CartDrawerProps = {
   error: string;
   isOpen: boolean;
   isSubmitting: boolean;
+  subjectName: string;
+  instructorName: string;
   onClose: () => void;
   onDecrease: (itemKey: string) => void;
   onIncrease: (itemKey: string) => void;
   onRemove: (itemKey: string) => void;
   onVariantChange: (itemKey: string, variantId: number) => void;
+  onSubjectNameChange: (value: string) => void;
+  onInstructorNameChange: (value: string) => void;
   onSubmit: () => void;
 };
 
@@ -32,11 +36,15 @@ export default function CartDrawer({
   error,
   isOpen,
   isSubmitting,
+  subjectName,
+  instructorName,
   onClose,
   onDecrease,
   onIncrease,
   onRemove,
   onVariantChange,
+  onSubjectNameChange,
+  onInstructorNameChange,
   onSubmit,
 }: CartDrawerProps) {
   const itemCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -167,6 +175,28 @@ export default function CartDrawer({
           <p className="mb-3 text-sm font-semibold text-ink">
             Total items: {itemCount}
           </p>
+          <div className="mb-3 grid gap-3">
+            <label className="text-sm font-medium text-ink">
+              Subject
+              <input
+                autoComplete="off"
+                className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                onChange={(event) => onSubjectNameChange(event.target.value)}
+                required
+                value={subjectName}
+              />
+            </label>
+            <label className="text-sm font-medium text-ink">
+              Instructor Name
+              <input
+                autoComplete="name"
+                className="mt-1 min-h-10 w-full rounded-md border border-ink/40 bg-surface px-3 py-2 font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                onChange={(event) => onInstructorNameChange(event.target.value)}
+                required
+                value={instructorName}
+              />
+            </label>
+          </div>
           {error && (
             <p className="mb-3 rounded bg-alert px-3 py-2 text-sm text-alert-text" role="alert">
               {error}

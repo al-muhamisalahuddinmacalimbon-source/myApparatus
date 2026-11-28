@@ -25,7 +25,11 @@ export async function GET() {
          ) AS items,
          l.borrowed_at AS "borrowedAt",
          l.due_at AS "dueAt",
-         CASE WHEN l.due_at < NOW() THEN 'Overdue' ELSE 'Active' END AS status,
+         CASE
+           WHEN l.status = 'pending' THEN 'Pending'
+           WHEN l.due_at < NOW() THEN 'Overdue'
+           ELSE 'Active'
+         END AS status,
          l.remarks,
          l.subject_name AS "subject_name",
          l.instructor_name AS "instructor_name",
@@ -40,7 +44,7 @@ export async function GET() {
        JOIN loan_items li ON li.loan_id = l.id
        JOIN apparatus a ON a.id = li.apparatus_id
        LEFT JOIN apparatus_variants v ON v.id = li.variant_id
-       WHERE l.status = 'Active'
+       WHERE l.status IN ('pending', 'Active')
          AND li.quantity > li.returned_quantity
        GROUP BY l.id, s.student_id, s.full_name
        ORDER BY l.borrowed_at DESC`,

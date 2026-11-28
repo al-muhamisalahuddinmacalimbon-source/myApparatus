@@ -17,7 +17,7 @@ export type Machine = {
   name: string;
 };
 
-export type StaffLoanStatus = "Active" | "Overdue";
+export type StaffLoanStatus = "Pending" | "Active" | "Overdue";
 
 export type StaffLoanItem = {
   name: string;
@@ -114,7 +114,7 @@ export type StudentBorrowingHistory = {
     borrowedAt: string;
     dueAt: string;
     returnedAt: string | null;
-    status: StaffLoanStatus | "Returned";
+    status: StaffLoanStatus | "Returned" | "Rejected";
     items: BorrowingHistoryItem[];
     subject_name: string | null;
     instructor_name: string | null;

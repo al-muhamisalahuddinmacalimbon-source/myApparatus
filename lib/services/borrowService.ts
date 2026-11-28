@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { addStudentNotification } from "@/lib/services/studentNotificationWriter";
+import {
+  addMockBorrowRequest,
+  isDatabaseUnavailable,
+} from "@/lib/services/borrowRequestFallback";
 
 type BorrowItem = {
   id?: number;
   variant_id?: number;
   quantity: number;
+  name?: string;
 };
 
 type StockRow = {
@@ -33,6 +38,7 @@ function isBorrowItem(value: unknown): value is BorrowItem {
       (typeof value.variant_id === "number" &&
         Number.isInteger(value.variant_id) &&
         value.variant_id > 0)) &&
+    (!("name" in value) || typeof value.name === "string") &&
     "quantity" in value &&
     typeof value.quantity === "number" &&
     Number.isInteger(value.quantity) &&
@@ -43,6 +49,14 @@ function isBorrowItem(value: unknown): value is BorrowItem {
 export async function POST(request: Request) {
   let client: PoolClient | undefined;
   let transactionStarted = false;
+  let fallbackData: {
+    studentId: string;
+    subjectName: string | null;
+    instructorName: string | null;
+    studentName: string;
+    items: BorrowItem[];
+    dueDays: number;
+  } | null = null;
 
   try {
     const body: unknown = await request.json();
@@ -63,23 +77,10 @@ export async function POST(request: Request) {
     const instructorName = "instructor_name" in body && typeof body.instructor_name === "string"
       ? body.instructor_name.trim() || null
       : null;
-    const instructorEndorsed =
-      "instructor_endorsed" in body && typeof body.instructor_endorsed === "boolean"
-        ? body.instructor_endorsed
-        : false;
-    const endorsementMethod =
-      "endorsement_method" in body && typeof body.endorsement_method === "string"
-        ? body.endorsement_method.trim() || null
-        : null;
-    const signatureData =
-      "instructor_signature_data" in body && typeof body.instructor_signature_data === "string"
-        ? body.instructor_signature_data
-        : null;
-    const endorsedAt =
-      "endorsed_at" in body && typeof body.endorsed_at === "string"
-        ? body.endorsed_at
-        : null;
-
+    const studentName =
+      "student_name" in body && typeof body.student_name === "string"
+        ? body.student_name.trim()
+        : "Student";
     if (
       typeof studentId !== "string" ||
       studentId.trim().length === 0 ||
@@ -98,6 +99,14 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    fallbackData = {
+      studentId: studentId.trim(),
+      subjectName,
+      instructorName,
+      studentName,
+      items,
+      dueDays,
+    };
 
     client = await pool.connect();
     await client.query("BEGIN");
@@ -194,8 +203,8 @@ export async function POST(request: Request) {
          endorsed_at
        )
        VALUES (
-         $1, CURRENT_TIMESTAMP + ($2 * INTERVAL '1 day'), 'Active',
-         $3, $4, $5, $6, $7, $8::timestamptz
+         $1, CURRENT_TIMESTAMP + ($2 * INTERVAL '1 day'), 'pending',
+         $3, $4, FALSE, NULL, NULL, NULL
        )
        RETURNING id AS loan_id, borrowed_at, due_at, remarks,
          subject_name, instructor_name, endorsement_token,
@@ -206,10 +215,6 @@ export async function POST(request: Request) {
         dueDays,
         subjectName,
         instructorName,
-        instructorEndorsed,
-        endorsementMethod,
-        signatureData,
-        endorsedAt,
       ],
     );
     const loan = loanResult.rows[0];
@@ -247,6 +252,10 @@ export async function POST(request: Request) {
       borrowed_at: loan.borrowed_at,
       due_at: loan.due_at,
       remarks: loan.remarks,
+      endorsement_token: loan.endorsement_token,
+      subject_name: loan.subject_name,
+      instructor_name: loan.instructor_name,
+      instructor_endorsed: loan.instructor_endorsed,
       items: borrowedItems,
     });
   } catch (error) {
@@ -257,13 +266,30 @@ export async function POST(request: Request) {
         console.error("Borrow Submit Rollback Error:", rollbackError);
       }
     }
-    console.error("Borrow Submit Error:", error);
+    console.error("Borrow Submit Error; creating mock request fallback:", error);
+    if (fallbackData && isDatabaseUnavailable(error)) {
+      return NextResponse.json(
+        addMockBorrowRequest({
+          student_id: fallbackData.studentId,
+          student_name: fallbackData.studentName,
+          subject_name: fallbackData.subjectName,
+          instructor_name: fallbackData.instructorName,
+          items: fallbackData.items.map((item) => ({
+            id: item.id ?? item.variant_id ?? 0,
+            variant_id: item.variant_id ?? null,
+            name: item.name ?? `Apparatus ${item.id ?? item.variant_id}`,
+            quantity: item.quantity,
+          })),
+          due_days: fallbackData.dueDays,
+        }),
+        { status: 201 },
+      );
+    }
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to submit the borrowing request.",
+        error: error instanceof Error
+          ? error.message
+          : "Unable to submit the borrowing request.",
       },
       { status: 500 },
     );

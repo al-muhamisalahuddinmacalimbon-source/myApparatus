@@ -37,9 +37,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: "Loan not found." }, { status: 404 });
     }
     const requestLoan = loan.rows[0];
-    if (requestLoan.status !== "Active") {
+    if (requestLoan.status !== "pending") {
       await client.query("ROLLBACK");
-      return NextResponse.json({ error: "This request is no longer active." }, { status: 409 });
+      return NextResponse.json({ error: "This request is no longer pending approval." }, { status: 409 });
     }
     if (requestLoan.released_at) {
       await client.query("ROLLBACK");
@@ -123,12 +123,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     await client.query(
       `UPDATE loans
-       SET released_at = CURRENT_TIMESTAMP, released_by = $1
+       SET status = 'Active', released_at = CURRENT_TIMESTAMP, released_by = $1
        WHERE id = $2`,
       [guard.session.id, Number(id)],
     );
     await client.query("COMMIT");
-    return NextResponse.json({ loanId: Number(id), status: "Released" });
+    return NextResponse.json({ loanId: Number(id), status: "Active" });
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => undefined);
     console.error("Unable to release approved borrow request:", error);

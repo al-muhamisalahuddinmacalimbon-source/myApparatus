@@ -80,10 +80,12 @@ function isBorrowedItems(
 
 type BorrowResponse = {
   loan_id: number;
+  endorsement_token: string;
   items: BorrowedItemResponse[];
   borrowed_at: string;
   due_at: string;
   remarks: string | null;
+  mock_fallback?: boolean;
 };
 
 function isBorrowResponse(value: unknown): value is BorrowResponse {
@@ -91,6 +93,8 @@ function isBorrowResponse(value: unknown): value is BorrowResponse {
   return (
     "loan_id" in value &&
     typeof value.loan_id === "number" &&
+    "endorsement_token" in value &&
+    typeof value.endorsement_token === "string" &&
     "items" in value &&
     isBorrowedItems(value.items) &&
     "borrowed_at" in value &&
@@ -98,7 +102,8 @@ function isBorrowResponse(value: unknown): value is BorrowResponse {
     "due_at" in value &&
     typeof value.due_at === "string" &&
     "remarks" in value &&
-    (typeof value.remarks === "string" || value.remarks === null)
+      (typeof value.remarks === "string" || value.remarks === null) &&
+      (!("mock_fallback" in value) || typeof value.mock_fallback === "boolean")
   );
 }
 
@@ -206,6 +211,8 @@ export default function CatalogPage() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [subjectName, setSubjectName] = useState("");
+  const [instructorName, setInstructorName] = useState("");
   const [catalogError, setCatalogError] = useState("");
   const [cartNotice, setCartNotice] = useState("");
   const [submittedSlip, setSubmittedSlip] = useState<{
@@ -213,6 +220,10 @@ export default function CatalogPage() {
     submittedAt: Date;
     dueAt: Date;
     remarks: string | null;
+    endorsementToken: string;
+    subjectName: string;
+    instructorName: string;
+    mockFallback: boolean;
   } | null>(null);
   const [student, setStudent] = useState({ id: "", name: "" });
   const [apparatusList, setApparatusList] = useState<Apparatus[]>([]);
@@ -553,6 +564,10 @@ export default function CatalogPage() {
       setSubmitError("Student information is unavailable. Please sign in again.");
       return;
     }
+    if (!subjectName.trim() || !instructorName.trim()) {
+      setSubmitError("Enter the subject and instructor name before submitting.");
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitError("");
@@ -562,10 +577,14 @@ export default function CatalogPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           student_id: student.id,
+          student_name: student.name,
+          subject_name: subjectName.trim(),
+          instructor_name: instructorName.trim(),
+          instructor_endorsed: false,
           items: cart.map((item) =>
             item.variantId === null
-              ? { id: item.apparatusId, quantity: item.quantity }
-              : { variant_id: item.variantId, quantity: item.quantity },
+              ? { id: item.apparatusId, name: item.name, quantity: item.quantity }
+              : { variant_id: item.variantId, name: item.name, quantity: item.quantity },
           ),
           due_days: 3,
         }),
@@ -609,40 +628,11 @@ export default function CatalogPage() {
         submittedAt: new Date(result.borrowed_at),
         dueAt: new Date(result.due_at),
         remarks: result.remarks,
+        endorsementToken: result.endorsement_token,
+        subjectName: subjectName.trim(),
+        instructorName: instructorName.trim(),
+        mockFallback: result.mock_fallback === true,
       });
-      setApparatusList((currentList) =>
-        currentList.map((apparatus) => {
-          let updated = apparatus;
-          for (const borrowedItem of result.items) {
-            if (borrowedItem.id !== apparatus.id) continue;
-            if (borrowedItem.variant_id === null) {
-              updated = {
-                ...updated,
-                available_stock: Math.max(
-                  0,
-                  updated.available_stock - borrowedItem.quantity,
-                ),
-              };
-            } else {
-              updated = {
-                ...updated,
-                variants: updated.variants.map((variant) =>
-                  variant.id === borrowedItem.variant_id
-                    ? {
-                        ...variant,
-                        available_stock: Math.max(
-                          0,
-                          variant.available_stock - borrowedItem.quantity,
-                        ),
-                      }
-                    : variant,
-                ),
-              };
-            }
-          }
-          return updated;
-        }),
-      );
       setIsCartOpen(false);
     } catch (error) {
       console.error("Unable to submit the borrowing request.", error);
@@ -828,11 +818,15 @@ export default function CatalogPage() {
         error={submitError}
         isOpen={isCartOpen}
         isSubmitting={isSubmitting}
+        subjectName={subjectName}
+        instructorName={instructorName}
         onClose={() => setIsCartOpen(false)}
         onDecrease={(itemId) => updateQuantity(itemId, -1)}
         onIncrease={(itemId) => updateQuantity(itemId, 1)}
         onRemove={removeFromCart}
         onVariantChange={changeCartVariant}
+        onSubjectNameChange={setSubjectName}
+        onInstructorNameChange={setInstructorName}
         onSubmit={submitBorrowerSlip}
       />
       {submittedSlip && (
@@ -841,6 +835,10 @@ export default function CatalogPage() {
           items={submittedSlip.items}
           onClose={closeBorrowerSlip}
           remarks={submittedSlip.remarks}
+          endorsementToken={submittedSlip.endorsementToken}
+          subjectName={submittedSlip.subjectName}
+          instructorName={submittedSlip.instructorName}
+          mockFallback={submittedSlip.mockFallback}
           studentId={student.id}
           studentName={student.name}
           submittedAt={submittedSlip.submittedAt}

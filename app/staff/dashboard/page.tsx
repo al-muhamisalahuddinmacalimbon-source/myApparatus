@@ -40,7 +40,7 @@ function isStaffLoan(value: unknown): value is StaffLoan {
     "dueAt" in value &&
     typeof value.dueAt === "string" &&
     "status" in value &&
-    (value.status === "Active" || value.status === "Overdue") &&
+    (value.status === "Pending" || value.status === "Active" || value.status === "Overdue") &&
     "remarks" in value &&
     (typeof value.remarks === "string" || value.remarks === null)
   );
@@ -243,7 +243,11 @@ export default function StaffDashboardPage() {
       setLoans((currentLoans) =>
         currentLoans.map((loan) =>
           loan.loanId === loanId
-            ? { ...loan, released_at: new Date().toISOString() }
+            ? {
+                ...loan,
+                status: "Active",
+                released_at: new Date().toISOString(),
+              }
             : loan,
         ),
       );
@@ -400,13 +404,16 @@ export default function StaffDashboardPage() {
         <ul aria-label="Active loans" className="space-y-3">
           {filteredLoans.map((loan) => {
             const isOverdue = loan.status === "Overdue";
+            const isPending = loan.status === "Pending";
             return (
               <li key={loan.loanId}>
                 <article
                   className={`min-w-0 rounded-lg border border-ink/20 border-l-4 p-4 shadow-sm ${
                     isOverdue
                       ? "border-l-alert bg-alert/10"
-                      : "border-l-maroon bg-surface"
+                      : isPending
+                        ? "border-l-amber-400 bg-surface"
+                        : "border-l-maroon bg-surface"
                   }`}
                 >
                   <header className="flex flex-wrap items-start justify-between gap-3">
@@ -420,10 +427,12 @@ export default function StaffDashboardPage() {
                       className={
                         isOverdue
                           ? "shrink-0 rounded bg-alert px-2 py-1 text-xs font-semibold text-alert-text"
-                          : "shrink-0 rounded bg-success px-2 py-1 text-xs font-semibold text-surface"
+                          : isPending
+                            ? "shrink-0 rounded bg-amber-300 px-2 py-1 text-xs font-semibold text-ink"
+                            : "shrink-0 rounded bg-success px-2 py-1 text-xs font-semibold text-surface"
                       }
                     >
-                      {isOverdue ? "Overdue" : "Active"}
+                      {isPending ? "Pending Lab Tech review" : isOverdue ? "Overdue" : "Active"}
                     </span>
                     <span
                       className={
@@ -517,6 +526,7 @@ export default function StaffDashboardPage() {
                       disabled={
                         returningLoanId === loan.loanId ||
                         savingRemarkId === loan.loanId ||
+                        !isPending ||
                         !loan.instructor_endorsed ||
                         Boolean(loan.released_at)
                       }
@@ -531,7 +541,7 @@ export default function StaffDashboardPage() {
                     </button>
                     <button
                       className="min-h-9 rounded border border-alert-text px-3 text-sm font-semibold text-alert-text hover:bg-alert disabled:cursor-wait disabled:opacity-60"
-                      disabled={returningLoanId === loan.loanId || Boolean(loan.released_at)}
+                      disabled={returningLoanId === loan.loanId || !isPending}
                       onClick={() => void rejectRequest(loan.loanId)}
                       type="button"
                     >

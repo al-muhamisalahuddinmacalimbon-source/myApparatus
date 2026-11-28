@@ -18,8 +18,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const result = await pool.query(
       `UPDATE loans
-       SET status = 'Returned', returned_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND status = 'Active' AND released_at IS NULL
+       SET status = 'Rejected'
+       WHERE id = $1 AND status = 'pending' AND released_at IS NULL
        RETURNING id`,
       [Number(id)],
     );
