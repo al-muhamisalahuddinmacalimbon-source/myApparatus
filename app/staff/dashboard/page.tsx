@@ -16,7 +16,9 @@ function isStaffLoanItem(value: unknown): value is StaffLoanItem {
     "name" in value &&
     typeof value.name === "string" &&
     "quantity" in value &&
-    typeof value.quantity === "number"
+    typeof value.quantity === "number" &&
+    (!("loanItemId" in value) ||
+      typeof value.loanItemId === "number")
   );
 }
 
@@ -86,6 +88,11 @@ export default function StaffDashboardPage() {
   const [remarkDraft, setRemarkDraft] = useState("");
   const [remarkError, setRemarkError] = useState("");
   const [selectedLoan, setSelectedLoan] = useState<StaffLoan | null>(null);
+  const [signatureLoan, setSignatureLoan] = useState<StaffLoan | null>(null);
+  const [returnEditorLoanId, setReturnEditorLoanId] = useState<number | null>(null);
+  const [returnDraft, setReturnDraft] = useState<
+    Record<number, { goodQty: number; damagedQty: number; lostQty: number; damageNotes: string }>
+  >({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -142,14 +149,59 @@ export default function StaffDashboardPage() {
     });
   }, [loans, search, statusFilter]);
 
+  function openReturnEditor(loan: StaffLoan) {
+    const draft: Record<number, { goodQty: number; damagedQty: number; lostQty: number; damageNotes: string }> = {};
+    for (const [index, item] of loan.items.entries()) {
+      const key = item.loanItemId ?? index;
+      draft[key] = {
+        goodQty: item.quantity,
+        damagedQty: 0,
+        lostQty: 0,
+        damageNotes: "",
+      };
+    }
+    setReturnDraft(draft);
+    setReturnEditorLoanId(loan.loanId);
+  }
+
   async function confirmReturn(loanId: number) {
+    const loan = loans.find((candidate) => candidate.loanId === loanId);
+    if (!loan) return;
+    const items = loan.items.map((item, index) => {
+      const key = item.loanItemId ?? index;
+      const split = returnDraft[key];
+      if (!split) {
+        throw new Error("Missing return split for an item.");
+      }
+      return {
+        loan_item_id: key,
+        good_qty: split.goodQty,
+        damaged_qty: split.damagedQty,
+        lost_qty: split.lostQty,
+        damage_notes: split.damageNotes.trim() || null,
+      };
+    });
+    if (
+      items.some((item, index) =>
+        item.good_qty + item.damaged_qty + item.lost_qty !==
+        loan.items[index].quantity
+      )
+    ) {
+      setError("Good, damaged, and lost quantities must equal each item's returned quantity.");
+      return;
+    }
+
     setReturningLoanId(loanId);
     setError("");
 
     try {
       const response = await fetch(
         `/api/admin/active-loans/${loanId}/return`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items }),
+        },
       );
       const payload: unknown = await response.json();
 
@@ -163,12 +215,72 @@ export default function StaffDashboardPage() {
       setSelectedLoan((currentLoan) =>
         currentLoan?.loanId === loanId ? null : currentLoan,
       );
+      setReturnEditorLoanId(null);
     } catch (returnError) {
       console.error("Unable to confirm equipment return:", returnError);
       setError(
         returnError instanceof Error
           ? returnError.message
           : "Unable to confirm this return.",
+      );
+    } finally {
+      setReturningLoanId(null);
+    }
+  }
+
+  async function approveAndRelease(loanId: number) {
+    setReturningLoanId(loanId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/admin/active-loans/${loanId}/release`,
+        { method: "POST" },
+      );
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, "Unable to approve and release this request."));
+      }
+      setLoans((currentLoans) =>
+        currentLoans.map((loan) =>
+          loan.loanId === loanId
+            ? { ...loan, released_at: new Date().toISOString() }
+            : loan,
+        ),
+      );
+    } catch (releaseError) {
+      setError(
+        releaseError instanceof Error
+          ? releaseError.message
+          : "Unable to approve and release this request.",
+      );
+    } finally {
+      setReturningLoanId(null);
+    }
+  }
+
+  async function rejectRequest(loanId: number) {
+    setReturningLoanId(loanId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/admin/active-loans/${loanId}/reject`,
+        { method: "POST" },
+      );
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, "Unable to reject this request."));
+      }
+      setLoans((currentLoans) =>
+        currentLoans.filter((loan) => loan.loanId !== loanId),
+      );
+      setSelectedLoan((currentLoan) =>
+        currentLoan?.loanId === loanId ? null : currentLoan,
+      );
+    } catch (rejectError) {
+      setError(
+        rejectError instanceof Error
+          ? rejectError.message
+          : "Unable to reject this request.",
       );
     } finally {
       setReturningLoanId(null);
@@ -313,7 +425,28 @@ export default function StaffDashboardPage() {
                     >
                       {isOverdue ? "Overdue" : "Active"}
                     </span>
+                    <span
+                      className={
+                        loan.instructor_endorsed
+                          ? "shrink-0 rounded bg-success px-2 py-1 text-xs font-semibold text-surface"
+                          : "shrink-0 rounded bg-amber-300 px-2 py-1 text-xs font-semibold text-ink"
+                      }
+                    >
+                      {loan.instructor_endorsed
+                        ? "Instructor Endorsed"
+                        : "Awaiting Instructor Endorsement"}
+                    </span>
                   </header>
+
+                  {loan.instructor_signature_data && (
+                    <button
+                      className="mt-3 text-sm font-semibold text-link underline"
+                      onClick={() => setSignatureLoan(loan)}
+                      type="button"
+                    >
+                      View Signature
+                    </button>
+                  )}
 
                   <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
                     <div className="min-w-0">
@@ -380,17 +513,37 @@ export default function StaffDashboardPage() {
                       View slip
                     </button>
                     <button
-                      className="min-h-9 rounded bg-maroon px-3 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      className="min-h-9 rounded bg-success px-3 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                       disabled={
                         returningLoanId === loan.loanId ||
-                        savingRemarkId === loan.loanId
+                        savingRemarkId === loan.loanId ||
+                        !loan.instructor_endorsed ||
+                        Boolean(loan.released_at)
                       }
-                      onClick={() => void confirmReturn(loan.loanId)}
+                      onClick={() => void approveAndRelease(loan.loanId)}
                       type="button"
                     >
                       {returningLoanId === loan.loanId
                         ? "Processing..."
-                        : "Confirm Return"}
+                        : loan.released_at
+                          ? "Released"
+                          : "Approve & Release"}
+                    </button>
+                    <button
+                      className="min-h-9 rounded border border-alert-text px-3 text-sm font-semibold text-alert-text hover:bg-alert disabled:cursor-wait disabled:opacity-60"
+                      disabled={returningLoanId === loan.loanId || Boolean(loan.released_at)}
+                      onClick={() => void rejectRequest(loan.loanId)}
+                      type="button"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      className="min-h-9 rounded bg-maroon px-3 text-sm font-semibold text-surface hover:bg-charcoal disabled:cursor-wait disabled:opacity-60"
+                      disabled={returningLoanId === loan.loanId || !loan.released_at}
+                      onClick={() => openReturnEditor(loan)}
+                      type="button"
+                    >
+                      Record Return
                     </button>
                   </footer>
                 </article>
@@ -461,6 +614,119 @@ export default function StaffDashboardPage() {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+      {signatureLoan && (
+        <Modal
+          onClose={() => setSignatureLoan(null)}
+          title="Instructor Signature Preview"
+        >
+          <div className="space-y-3 p-4">
+            <p className="text-sm text-ink">
+              <span className="font-semibold">Instructor:</span>{" "}
+              {signatureLoan.instructor_name || "Not provided"}
+            </p>
+            <p className="text-sm text-ink">
+              <span className="font-semibold">Subject:</span>{" "}
+              {signatureLoan.subject_name || "Not provided"}
+            </p>
+            <div className="rounded border border-ink/30 bg-page p-6 text-center">
+              {signatureLoan.instructor_signature_data ? (
+                signatureLoan.instructor_signature_data.startsWith("data:image") ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    alt="Instructor signature"
+                    className="mx-auto max-h-40"
+                    src={signatureLoan.instructor_signature_data}
+                  />
+                ) : (
+                  <p className="font-serif text-2xl italic text-ink">
+                    {signatureLoan.instructor_signature_data}
+                  </p>
+                )
+              ) : (
+                <p className="text-sm text-ink/70">Signature not available.</p>
+              )}
+            </div>
+            <button
+              className="min-h-10 w-full rounded bg-maroon px-4 text-sm font-semibold text-surface"
+              onClick={() => setSignatureLoan(null)}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
+      )}
+      {returnEditorLoanId !== null && (
+        <Modal
+          onClose={() => setReturnEditorLoanId(null)}
+          title="Record Returned Items"
+        >
+          <div className="space-y-4 p-4">
+            {loans
+              .find((loan) => loan.loanId === returnEditorLoanId)
+              ?.items.map((item, index) => {
+                const key = item.loanItemId ?? index;
+                const split = returnDraft[key];
+                if (!split) return null;
+                return (
+                  <div className="rounded border border-ink/20 p-3" key={key}>
+                    <p className="mb-2 text-sm font-semibold text-ink">
+                      {item.name} — quantity {item.quantity}
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["goodQty", "damagedQty", "lostQty"] as const).map((field) => (
+                        <label className="text-xs font-semibold text-ink" key={field}>
+                          {field === "goodQty" ? "Good" : field === "damagedQty" ? "Damaged" : "Lost"}
+                          <input
+                            className="mt-1 h-10 w-full rounded border border-ink/40 px-2"
+                            min={0}
+                            onChange={(event) =>
+                              setReturnDraft((current) => ({
+                                ...current,
+                                [key]: {
+                                  ...current[key],
+                                  [field]: Math.max(0, Number(event.target.value) || 0),
+                                },
+                              }))
+                            }
+                            type="number"
+                            value={split[field]}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    {(split.damagedQty > 0 || split.lostQty > 0) && (
+                      <label className="mt-2 block text-xs font-semibold text-ink">
+                        Damage/loss notes
+                        <textarea
+                          className="mt-1 min-h-16 w-full rounded border border-ink/40 px-2 py-1"
+                          onChange={(event) =>
+                            setReturnDraft((current) => ({
+                              ...current,
+                              [key]: {
+                                ...current[key],
+                                damageNotes: event.target.value,
+                              },
+                            }))
+                          }
+                          value={split.damageNotes}
+                        />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            <button
+              className="min-h-10 w-full rounded bg-maroon px-4 text-sm font-semibold text-surface disabled:opacity-60"
+              disabled={returningLoanId !== null}
+              onClick={() => void confirmReturn(returnEditorLoanId)}
+              type="button"
+            >
+              {returningLoanId === returnEditorLoanId ? "Recording..." : "Save Return"}
+            </button>
+          </div>
         </Modal>
       )}
       {selectedLoan && (

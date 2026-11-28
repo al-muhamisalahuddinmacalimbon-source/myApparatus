@@ -219,12 +219,6 @@ export async function POST(request: Request) {
         "INSERT INTO loan_items (loan_id, apparatus_id, variant_id, quantity) VALUES ($1, $2, $3, $4)",
         [loan.loan_id, item.id, item.variant_id, item.quantity],
       );
-      await client.query(
-        item.variant_id
-          ? "UPDATE apparatus_variants SET available_stock = available_stock - $1 WHERE id = $2"
-          : "UPDATE apparatus SET available_stock = available_stock - $1 WHERE id = $2",
-        [item.quantity, item.variant_id ?? item.id],
-      );
     }
 
     await client.query(

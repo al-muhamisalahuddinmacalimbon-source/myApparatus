@@ -185,6 +185,8 @@ export async function POST(request: Request) {
 
   const studentId = body.student_id;
   const itemIds = "item_ids" in body ? body.item_ids : undefined;
+  const returnSplits =
+    "items" in body && Array.isArray(body.items) ? body.items : null;
   if (
     typeof studentId !== "string" ||
     !studentId.trim() ||
@@ -267,21 +269,90 @@ export async function POST(request: Request) {
     const affectedLoanIds = new Set<number>();
     for (const row of selectedRows) {
       const remainingQuantity = row.quantity - row.returned_quantity;
+      let goodQty = remainingQuantity;
+      let damagedQty = 0;
+      let lostQty = 0;
+      let damageNotes: string | null = null;
+
+      if (returnSplits) {
+        const split = returnSplits.find(
+          (candidate) =>
+            candidate &&
+            typeof candidate === "object" &&
+            "loan_item_id" in candidate &&
+            candidate.loan_item_id === row.loan_item_id,
+        );
+        if (!split) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "A return split is required for every selected loan item." },
+            { status: 400 },
+          );
+        }
+        const fields = split as Record<string, unknown>;
+        if (
+          typeof fields.good_qty !== "number" ||
+          typeof fields.damaged_qty !== "number" ||
+          typeof fields.lost_qty !== "number" ||
+          !Number.isInteger(fields.good_qty) ||
+          !Number.isInteger(fields.damaged_qty) ||
+          !Number.isInteger(fields.lost_qty) ||
+          fields.good_qty < 0 ||
+          fields.damaged_qty < 0 ||
+          fields.lost_qty < 0
+        ) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "Good, damaged, and lost quantities must be nonnegative integers." },
+            { status: 400 },
+          );
+        }
+        goodQty = fields.good_qty;
+        damagedQty = fields.damaged_qty;
+        lostQty = fields.lost_qty;
+        damageNotes =
+          "damage_notes" in fields && typeof fields.damage_notes === "string"
+            ? fields.damage_notes.trim() || null
+            : null;
+        if (goodQty + damagedQty + lostQty !== remainingQuantity) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "Good, damaged, and lost quantities must equal the returned quantity." },
+            { status: 400 },
+          );
+        }
+      }
+
+      if (goodQty > 0) {
       if (row.variant_id !== null) {
         stockByVariant.set(
           row.variant_id,
-          (stockByVariant.get(row.variant_id) ?? 0) + remainingQuantity,
+          (stockByVariant.get(row.variant_id) ?? 0) + goodQty,
         );
       } else {
         stockByApparatus.set(
           row.apparatus_id,
-          (stockByApparatus.get(row.apparatus_id) ?? 0) + remainingQuantity,
+          (stockByApparatus.get(row.apparatus_id) ?? 0) + goodQty,
         );
+      }
       }
       affectedLoanIds.add(row.loan_id);
       await client.query(
-        "UPDATE loan_items SET returned_quantity = quantity WHERE id = $1",
-        [row.loan_item_id],
+        `UPDATE loan_items
+         SET returned_quantity = quantity,
+             return_condition = CASE
+               WHEN $2 > 0 THEN 'lost'
+               WHEN $3 > 0 THEN 'damaged'
+               ELSE 'good'
+             END,
+             damaged_qty = $3,
+             lost_qty = $2,
+             damage_notes = $4
+         WHERE id = $1`,
+        [row.loan_item_id, lostQty, damagedQty, damageNotes],
       );
     }
 

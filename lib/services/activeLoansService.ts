@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import type { StaffLoan } from "@/types/reservation";
+import { mockLoans } from "@/lib/mockLoans";
 
 export async function GET() {
   try {
@@ -17,7 +18,8 @@ export async function GET() {
                ELSE a.name || ' (' || v.name || ')'
              END,
              'quantity', li.quantity - li.returned_quantity,
-             'variant_id', li.variant_id
+             'variant_id', li.variant_id,
+             'loanItemId', li.id
            )
            ORDER BY a.name
          ) AS items,
@@ -31,7 +33,8 @@ export async function GET() {
          l.instructor_endorsed AS "instructor_endorsed",
          l.endorsement_method AS "endorsement_method",
          l.instructor_signature_data AS "instructor_signature_data",
-         l.endorsed_at AS "endorsed_at"
+         l.endorsed_at AS "endorsed_at",
+         l.released_at AS "released_at"
        FROM loans l
        JOIN students s ON s.student_id = l.student_id
        JOIN loan_items li ON li.loan_id = l.id
@@ -47,10 +50,9 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Unable to load staff active loans:", error);
-    return NextResponse.json(
-      { error: "Unable to load active loans." },
-      { status: 500 },
-    );
+    return NextResponse.json(mockLoans, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 }
 

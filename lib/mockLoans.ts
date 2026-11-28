@@ -23,6 +23,13 @@ export const mockLoans: StaffLoan[] = [
     dueAt: "2026-11-02T09:00:00+08:00",
     status: "Active",
     remarks: null,
+    instructor_endorsed: true,
+    subject_name: "General Chemistry",
+    instructor_name: "Dr. Liza Santos",
+    endorsement_token: "00000000-0000-4000-8000-000000000001",
+    endorsement_method: "Digital signature",
+    instructor_signature_data: "INSTRUCTOR-SIGNATURE-DEMO-1",
+    endorsed_at: "2026-10-30T08:30:00+08:00",
   },
   {
     loanId: 2,

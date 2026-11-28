@@ -7,7 +7,7 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function POST(_request: Request, { params }: RouteContext) {
+export async function POST(request: Request, { params }: RouteContext) {
   const { id } = await params;
   if (!/^[1-9]\d*$/.test(id)) {
     return NextResponse.json({ error: "Invalid loan ID." }, { status: 400 });
@@ -17,6 +17,20 @@ export async function POST(_request: Request, { params }: RouteContext) {
   let transactionStarted = false;
 
   try {
+    let body: unknown = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+    const splitItems =
+      body &&
+      typeof body === "object" &&
+      "items" in body &&
+      Array.isArray(body.items)
+        ? body.items
+        : null;
+
     client = await pool.connect();
     await client.query("BEGIN");
     transactionStarted = true;
@@ -73,21 +87,80 @@ export async function POST(_request: Request, { params }: RouteContext) {
     }
 
     for (const item of itemsResult.rows) {
-      const apparatusResult = item.variant_id
+      let goodQty = item.return_quantity;
+      let damagedQty = 0;
+      let lostQty = 0;
+      let damageNotes: string | null = null;
+
+      if (splitItems) {
+        const split = splitItems.find(
+          (candidate) =>
+            candidate &&
+            typeof candidate === "object" &&
+            "loan_item_id" in candidate &&
+            candidate.loan_item_id === item.loan_item_id,
+        );
+        if (!split) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "A return split is required for every selected loan item." },
+            { status: 400 },
+          );
+        }
+        const fields = split as Record<string, unknown>;
+        if (
+          typeof fields.good_qty !== "number" ||
+          typeof fields.damaged_qty !== "number" ||
+          typeof fields.lost_qty !== "number" ||
+          !Number.isInteger(fields.good_qty) ||
+          !Number.isInteger(fields.damaged_qty) ||
+          !Number.isInteger(fields.lost_qty) ||
+          fields.good_qty < 0 ||
+          fields.damaged_qty < 0 ||
+          fields.lost_qty < 0
+        ) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "Good, damaged, and lost quantities must be nonnegative integers." },
+            { status: 400 },
+          );
+        }
+        goodQty = fields.good_qty;
+        damagedQty = fields.damaged_qty;
+        lostQty = fields.lost_qty;
+        damageNotes =
+          "damage_notes" in fields && typeof fields.damage_notes === "string"
+            ? fields.damage_notes.trim() || null
+            : null;
+        if (goodQty + damagedQty + lostQty !== item.return_quantity) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "Good, damaged, and lost quantities must equal the returned quantity." },
+            { status: 400 },
+          );
+        }
+      }
+
+      const apparatusResult = goodQty > 0
+        ? item.variant_id
         ? await client.query(
             `UPDATE apparatus_variants
              SET available_stock = available_stock + $1
              WHERE id = $2
              RETURNING id`,
-            [item.return_quantity, item.variant_id],
+            [goodQty, item.variant_id],
           )
         : await client.query(
             `UPDATE apparatus
              SET available_stock = available_stock + $1
              WHERE id = $2
              RETURNING id`,
-            [item.return_quantity, item.apparatus_id],
-          );
+            [goodQty, item.apparatus_id],
+          )
+        : { rows: [{ id: item.apparatus_id }] };
 
       if (apparatusResult.rows.length === 0) {
         throw new Error(
@@ -99,9 +172,22 @@ export async function POST(_request: Request, { params }: RouteContext) {
 
       await client.query(
         `UPDATE loan_items
-         SET returned_quantity = quantity
+         SET returned_quantity = quantity,
+             return_condition = CASE
+               WHEN $2 > 0 THEN 'lost'
+               WHEN $3 > 0 THEN 'damaged'
+               ELSE 'good'
+             END,
+             damaged_qty = $3,
+             lost_qty = $2,
+             damage_notes = $4
          WHERE id = $1`,
-        [item.loan_item_id],
+        [
+          item.loan_item_id,
+          lostQty,
+          damagedQty,
+          damageNotes,
+        ],
       );
     }
 

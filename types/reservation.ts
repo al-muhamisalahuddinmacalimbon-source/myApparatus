@@ -23,6 +23,15 @@ export type StaffLoanItem = {
   name: string;
   quantity: number;
   variant_id?: number | null;
+  loanItemId?: number;
+};
+
+export type ReturnItemSplit = {
+  loan_item_id: number;
+  good_qty: number;
+  damaged_qty: number;
+  lost_qty: number;
+  damage_notes: string | null;
 };
 
 export type ReturnLoanItem = StaffLoanItem & {
@@ -126,4 +135,5 @@ export type StaffLoan = InstructorEndorsement & {
   dueAt: string;
   status: StaffLoanStatus;
   remarks: string | null;
+  released_at?: string | null;
 };
